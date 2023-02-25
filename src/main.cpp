@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <U8g2lib.h>
-
+#include <STM32FreeRTOS.h>
 //Constants
   const uint32_t interval = 100; //Display update interval
 
@@ -55,6 +55,78 @@ void sampleISR(){
   int32_t Vout = (phaseAcc >> 24) - 128;
   analogWrite(OUTR_PIN, Vout+128);
 }
+
+uint8_t readCols(){
+  // write a function to read the 4 columns and return a byte with the 4 bits set
+  // according to the state of the columns
+  uint8_t result = 0;
+  result |= digitalRead(C0_PIN) << 0;
+  result |= digitalRead(C1_PIN) << 1;
+  result |= digitalRead(C2_PIN) << 2;
+  result |= digitalRead(C3_PIN) << 3;
+  return result;
+}
+
+void setRow(uint8_t rowIdx){
+  // write a function to set the row select lines to the value of rowIdx
+  digitalWrite(REN_PIN, LOW);
+  digitalWrite(RA0_PIN, rowIdx & 0x01);
+  digitalWrite(RA1_PIN, rowIdx & 0x02);
+  digitalWrite(RA2_PIN, rowIdx & 0x04);
+  digitalWrite(REN_PIN, HIGH);
+}
+
+volatile uint8_t keyArray[7];
+char currentKey[2];
+  // write a function to scan the keys and update the currentStepSize variable
+  // with the step size for the selected key
+  // (hint: use the stepSizes array and the readCols function
+
+constexpr int stepSizes [12] = {50953930, 54077542, 57396381, 60715219, 64229283, 68133799, 72233540, 76528508, 81018701, 85899345, 90975216, 96441538};
+
+constexpr uint8_t key_num_to_char[12] = {'C','C','D','D','E','F','F','G','G','A','A','B'};
+constexpr bool key_num_to_sharp[12] = {false,true,false,true,false,false,true,false,true,false,true,false};
+
+void scanKeysTask(void *pvParameters){
+  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  while(1){
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    uint32_t localstepsize = 0;
+    for(uint8_t rowIdx = 0; rowIdx < 3; rowIdx++){
+      setRow(rowIdx);
+      keyArray[rowIdx] = readCols();
+      for(uint8_t i = 0; i<4; i++){
+        if(!(keyArray[rowIdx] & (1<<i))){
+          localstepsize = stepSizes[rowIdx*4+i];
+          currentKey[0] = key_num_to_char[rowIdx*4+i];
+          currentKey[1] = key_num_to_sharp[rowIdx*4+i] ? '#' : ' ';
+        }
+      }
+      __atomic_store_n(&currentStepSize, localstepsize, __ATOMIC_SEQ_CST);
+      Serial.println(currentStepSize, DEC);
+    }
+  }
+}
+void displayUpdateTask(void *pvParameters){
+  const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  while(1){
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    char rows[3];
+    int n = sprintf(rows, "%X%X%X", keyArray[0], keyArray[1], keyArray[2]);
+    const char *row2 =  rows;
+    const char *row3 = currentKey;
+    //Update display
+    u8g2.clearBuffer();         // clear the internal memory
+    u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
+    u8g2.drawStr(2,10,"Hello World!");  // write something to the internal memory 
+    u8g2.drawStr(2,20, row2);
+    u8g2.drawStr(2,30, row3);
+    digitalToggle(LED_BUILTIN);
+    u8g2.sendBuffer();          // transfer internal memory to the display  
+  }
+}
 void setup() {
   // put your setup code here, to run once:
 
@@ -90,79 +162,28 @@ void setup() {
   sampleTimer->setOverflow(22000, HERTZ_FORMAT);
   sampleTimer->attachInterrupt(sampleISR);
   sampleTimer->resume();
+
+  TaskHandle_t scanKeysHandle = NULL;
+  xTaskCreate(
+    scanKeysTask,		/* Function that implements the task */
+    "scanKeys",		/* Text name for the task */
+    64,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    2,			/* Task priority */
+    &scanKeysHandle 
+  );  /* Pointer to store the task handle */
+  TaskHandle_t displayUpdateHandle = NULL;
+  xTaskCreate(
+    displayUpdateTask,		/* Function that implements the task */
+    "displayUpdate",		/* Text name for the task */
+    256,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    1,			/* Task priority */
+    &displayUpdateHandle 
+  );  /* Pointer to store the task handle */
+  vTaskStartScheduler();
 }
-
-uint8_t readCols(){
-  // write a function to read the 4 columns and return a byte with the 4 bits set
-  // according to the state of the columns
-  uint8_t result = 0;
-  result |= digitalRead(C0_PIN) << 0;
-  result |= digitalRead(C1_PIN) << 1;
-  result |= digitalRead(C2_PIN) << 2;
-  result |= digitalRead(C3_PIN) << 3;
-  return result;
-}
-
-void setRow(uint8_t rowIdx){
-  // write a function to set the row select lines to the value of rowIdx
-  digitalWrite(REN_PIN, LOW);
-  digitalWrite(RA0_PIN, rowIdx & 0x01);
-  digitalWrite(RA1_PIN, rowIdx & 0x02);
-  digitalWrite(RA2_PIN, rowIdx & 0x04);
-  digitalWrite(REN_PIN, HIGH);
-}
-
-
-constexpr int stepSizes [12] = {50953930, 54077542, 57396381, 60715219, 64229283, 68133799, 72233540, 76528508, 81018701, 85899345, 90975216, 96441538};
-
-constexpr uint8_t key_num_to_char[12] = {'C','C','D','D','E','F','F','G','G','A','A','B'};
-constexpr bool key_num_to_sharp[12] = {false,true,false,true,false,false,true,false,true,false,true,false};
 
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  static uint32_t next = millis();
-  static uint32_t count = 0;
-
-  static uint8_t keyArray[7];
-  uint32_t localstepsize =0;
-
-  if (millis() > next) {
-    char currentKey[2];
-    for(uint8_t rowIdx = 0; rowIdx < 3; rowIdx++){
-      setRow(rowIdx);
-      delayMicroseconds(3);
-      keyArray[rowIdx] = readCols();
-
-      for(uint8_t i = 0; i<4; i++){
-        if(!(keyArray[rowIdx] & (1<<i))){
-          localstepsize = stepSizes[rowIdx*4+i];
-          currentKey[0] = key_num_to_char[rowIdx*4+i];
-          currentKey[1] = key_num_to_sharp[rowIdx*4+i] ? '#' : ' ';
-        }
-      }
-      __atomic_store_n(&currentStepSize, localstepsize, __ATOMIC_RELAXED);
-      Serial.println(currentStepSize, DEC);
-    }
-    char rows[3];
-    int n = sprintf(rows, "%X%X%X", keyArray[0], keyArray[1], keyArray[2]);
-    const char *row2 =  rows;
-    const char *row3 = currentKey;
-    next += interval;
-    //Update display
-    u8g2.clearBuffer();         // clear the internal memory
-    u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    u8g2.drawStr(2,10,"Hello World!");  // write something to the internal memory 
-
-    u8g2.drawStr(2,20, row2);
-    
-    u8g2.drawStr(2,30, row3);
-    //Toggle LED
-    digitalToggle(LED_BUILTIN);
-
-    //Task 1 - Read columns and display on serial
-    // u8g2.setCursor(2,30);
-    // u8g2.print((keyArray[0])|(keyArray[1]<<1)|(keyArray[2]<<2), HEX);
-    u8g2.sendBuffer();          // transfer internal memory to the display
-  }
 }
