@@ -87,15 +87,40 @@ constexpr int stepSizes [12] = {50953930, 54077542, 57396381, 60715219, 64229283
 constexpr uint8_t key_num_to_char[12] = {'C','C','D','D','E','F','F','G','G','A','A','B'};
 constexpr bool key_num_to_sharp[12] = {false,true,false,true,false,false,true,false,true,false,true,false};
 
+SemaphoreHandle_t keyArrayMutex;
+// volatile int8_t rotation_variable = 0;
+
+// int8_t decode_knob3(uint8_t prev_a, uint8_t prev_b, uint8_t curr_a, uint8_t curr_b){
+//   uint8_t concat_ab = (prev_b << 3) + (prev_a << 2) + (curr_b << 1) + curr_a;
+//   return (concat_ab == 0b0001 || concat_ab == 0b1110) ? 1 : (concat_ab == 0b0100 || concat_ab == 0b1011) ? -1 : 0; 
+// }
+
 void scanKeysTask(void *pvParameters){
   const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  static uint8_t prev_knob3_a = 0;
+  static uint8_t prev_knob3_b = 0;
+  
+  static uint8_t curr_knob3_a = 0;
+  static uint8_t curr_knob3_b = 0;
+
   while(1){
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     uint32_t localstepsize = 0;
+
+    // the issue that makes the knobs change notes is when u increase rowidx to 4
     for(uint8_t rowIdx = 0; rowIdx < 3; rowIdx++){
       setRow(rowIdx);
       keyArray[rowIdx] = readCols();
+      // if(rowIdx == 10){
+      //   //Reading knob 2, 3
+      //   prev_knob3_a = curr_knob3_a;
+      //   prev_knob3_b = curr_knob3_b;
+      //   curr_knob3_a = keyArray[3] & 0x01;
+      //   curr_knob3_b = keyArray[3] & 0x02;
+      //   rotation_variable = decode_knob3(prev_knob3_a, prev_knob3_b, curr_knob3_a, curr_knob3_b);
+      // }
       for(uint8_t i = 0; i<4; i++){
         if(!(keyArray[rowIdx] & (1<<i))){
           localstepsize = stepSizes[rowIdx*4+i];
@@ -106,6 +131,7 @@ void scanKeysTask(void *pvParameters){
       __atomic_store_n(&currentStepSize, localstepsize, __ATOMIC_SEQ_CST);
       Serial.println(currentStepSize, DEC);
     }
+    xSemaphoreGive(keyArrayMutex);
   }
 }
 void displayUpdateTask(void *pvParameters){
@@ -113,8 +139,10 @@ void displayUpdateTask(void *pvParameters){
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     char rows[3];
     int n = sprintf(rows, "%X%X%X", keyArray[0], keyArray[1], keyArray[2]);
+    xSemaphoreGive(keyArrayMutex);
     const char *row2 =  rows;
     const char *row3 = currentKey;
     //Update display
@@ -123,11 +151,16 @@ void displayUpdateTask(void *pvParameters){
     u8g2.drawStr(2,10,"Hello World!");  // write something to the internal memory 
     u8g2.drawStr(2,20, row2);
     u8g2.drawStr(2,30, row3);
+    u8g2.setCursor(40,30);
+    // u8g2.print(rotation_variable, DEC);
     digitalToggle(LED_BUILTIN);
     u8g2.sendBuffer();          // transfer internal memory to the display  
   }
 }
+
 void setup() {
+
+  keyArrayMutex = xSemaphoreCreateMutex();
   // put your setup code here, to run once:
 
   //Set pin directions
@@ -162,7 +195,6 @@ void setup() {
   sampleTimer->setOverflow(22000, HERTZ_FORMAT);
   sampleTimer->attachInterrupt(sampleISR);
   sampleTimer->resume();
-
   TaskHandle_t scanKeysHandle = NULL;
   xTaskCreate(
     scanKeysTask,		/* Function that implements the task */
