@@ -86,11 +86,12 @@ class Knob {
     int lowerLimit;
     int8_t a = 0;
     int8_t previnc = 0;
-    volatile int8_t knobrotation = 6;
+    volatile int8_t knobrotation;
 
     Knob(int upper, int lower){
       upperLimit = upper;
       lowerLimit = lower;
+      knobrotation = (upper+lower) >> 1;
     }
 
     void getValue(int8_t an){
@@ -104,6 +105,7 @@ class Knob {
 };
 
 Knob knob3(8, 0);
+Knob knob2(8, 0);
 
 void sampleISR() {
   static int32_t phaseAcc = 0;
@@ -117,7 +119,7 @@ volatile int8_t press = -1;
 
 void writetx(uint8_t totx[]){
   totx[0] = press==-1?0x52:0x50;
-  totx[1] = 4;
+  totx[1] = knob2.knobrotation;
   totx[2] = press!=-1?press:totx[2];
 }
 
@@ -127,7 +129,7 @@ uint8_t RX_Message[8]={0};
 void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
-  static int8_t a,an,previnc =0;
+  static int8_t an3,an2 =0;
   uint8_t TX_Message[8] = {0};
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
@@ -163,9 +165,11 @@ void scanKeysTask(void * pvParameters) {
       //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       // u8g2.sendBuffer();          // transfer internal memory to the display
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-      knob3.getValue(an);
+      knob3.getValue(an3);
+      knob2.getValue(an2);
       xSemaphoreGive(keyArrayMutex);
-      an = ((keyArrayCopy[3]) & 0x03);
+      an3 = ((keyArrayCopy[3]) & 0x03);
+      an2 = (((keyArrayCopy[3]) & 0x0C) >> 2);
       xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
   }
 }
@@ -203,6 +207,8 @@ void displayUpdateTask(void * pvParameters){
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     
     u8g2.print(knob3.knobrotation,DEC);
+    u8g2.setCursor(82,20);
+    u8g2.print(knob2.knobrotation,DEC);
     xSemaphoreGive(keyArrayMutex);
     u8g2.setCursor(66,30);
     u8g2.print((char) RX_Message[0]);
@@ -240,7 +246,10 @@ void CANDecodeTask(void * pvParameters){
       __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
     }
     else if(RX_Message[0] == 0x50){
+      if(RX_Message[1] >4)
       localCurrentStepSize = stepSizes[RX_Message[2]] << (RX_Message[1] - 4);
+      else
+      localCurrentStepSize = stepSizes[RX_Message[2]] >> (4 - RX_Message[1]);
       __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
     }
    
