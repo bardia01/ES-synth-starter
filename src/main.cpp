@@ -78,7 +78,7 @@ const int32_t stepSizes [] = {50953930, 54077542, 57396381, 60715219, 64229283, 
 //[64299564.93684364, 68124038.08814545, 72174973.15141818, 76469940.44741818, 81077269.0013091, 85899345.92, 91006452.48651637]
 std::string keyMap[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 int32_t dog = 0;
-volatile uint8_t knob3rotation = 6;
+volatile int8_t knob3rotation = 6;
 
 void sampleISR() {
   static int32_t phaseAcc = 0;
@@ -112,7 +112,7 @@ uint8_t RX_Message[8]={0};
 void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
-  static uint8_t a,an,previnc =0;
+  static int8_t a,an,previnc =0;
   uint8_t TX_Message[8] = {0};
   tmp = pressed;
   while(1){
@@ -127,10 +127,9 @@ void scanKeysTask(void * pvParameters) {
       delayMicroseconds(3);
       keyArray[i] = readCols();
     }
+    uint8_t keyArraycopyy[7]; 
+    memcpy(&keyArraycopyy, (void*)&keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
-      uint8_t keyArraycopyy[7]; 
-      memcpy(&keyArraycopyy, (void*)&keyArray, sizeof keyArray);
-      xSemaphoreGive(keyArrayMutex);
       for(uint8_t i = 0; i < 3; i++){
         for(uint8_t j = 0; j < 4; j++)
         {
@@ -180,12 +179,7 @@ void scanKeysTask(void * pvParameters) {
       else if(a==3 && an ==0){
         knob3rotation += previnc;
       }
-      if(knob3rotation > 8){
-        knob3rotation = 8;
-      }
-      else if(knob3rotation < 0){
-        knob3rotation = 0;
-      }
+      knob3rotation = min(8, max(0, int(knob3rotation)));
       xSemaphoreGive(keyArrayMutex);
       a = an;
       an = ((keyArraycopyy[3]) & 0x03);
