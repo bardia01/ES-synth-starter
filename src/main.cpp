@@ -77,33 +77,48 @@ void setRow(uint8_t rowIdx){
 const int32_t stepSizes [] = {50953930, 54077542, 57396381, 60715219, 64229283, 68133799, 72233540, 76528508, 81018701, 85899345, 90975216, 96441538}; // = 2^32 * f / Fs = 2^32 * 440 / 22k
 //[64299564.93684364, 68124038.08814545, 72174973.15141818, 76469940.44741818, 81077269.0013091, 85899345.92, 91006452.48651637]
 std::string keyMap[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-int32_t dog = 0;
-volatile int8_t knob3rotation = 6;
+
+
+class Knob {
+
+  public:
+    int upperLimit;
+    int lowerLimit;
+    int8_t a = 0;
+    int8_t previnc = 0;
+    volatile int8_t knobrotation = 6;
+
+    Knob(int upper, int lower){
+      upperLimit = upper;
+      lowerLimit = lower;
+    }
+
+    void getValue(int8_t an){
+      if((a==0 && an ==1) || (a==3 && an==2)) {knobrotation+=1; previnc=1;}
+      else if((a==1 && an==0) || (a==2 && an==3)) {knobrotation-=1;previnc=-1;}
+      else if((a==0 && an==3) || (a==2 && an==1) || (a==3 && an ==0)) knobrotation+=previnc;
+      knobrotation = min(upperLimit, max(lowerLimit, int(knobrotation)));
+      a = an;
+    }
+
+};
+
+Knob knob3(8, 0);
 
 void sampleISR() {
   static int32_t phaseAcc = 0;
   phaseAcc += currentStepSize;
-  int32_t Vout = phaseAcc >> 24;
-  Vout = Vout >> (8 - knob3rotation);
+  int32_t Vout = (phaseAcc >> 24) - 128;
+  Vout = Vout >> (8 - knob3.knobrotation);
   analogWrite(OUTR_PIN, (Vout + 128));
 }
 
-volatile int8_t tmp = 0;
-volatile int8_t pressed = -1;
+volatile int8_t press = -1;
 
 void writetx(uint8_t totx[]){
-  if(tmp == pressed){
-    totx[0] = 0x52;
-  }
-  else {
-    totx[0]= 0x50;
-  }
+  totx[0] = press==-1?0x52:0x50;
   totx[1] = 4;
-  if(pressed == -1){
-    totx[2] = 0;
-  }
-  else
-  totx[2] = pressed;
+  totx[2] = press!=-1?press:totx[2];
 }
 
 uint32_t ID;
@@ -114,7 +129,6 @@ void scanKeysTask(void * pvParameters) {
   TickType_t xLastWakeTime = xTaskGetTickCount();
   static int8_t a,an,previnc =0;
   uint8_t TX_Message[8] = {0};
-  tmp = pressed;
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     u8g2.setFont(u8g2_font_ncenB08_tr);
@@ -127,20 +141,20 @@ void scanKeysTask(void * pvParameters) {
       delayMicroseconds(3);
       keyArray[i] = readCols();
     }
-    uint8_t keyArraycopyy[7]; 
-    memcpy(&keyArraycopyy, (void*)&keyArray, sizeof keyArray);
+    uint8_t keyArrayCopy[7]; 
+    memcpy(&keyArrayCopy, (void*)&keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
       for(uint8_t i = 0; i < 3; i++){
         for(uint8_t j = 0; j < 4; j++)
         {
-          if(!(keyArraycopyy[i] & (1 << j)))
+          if(!(keyArrayCopy[i] & (1 << j)))
           {
-            pressed = i*4 + j;
-            localCurrentStepSize = stepSizes[pressed];
+            press = i*4 + j;
+            localCurrentStepSize = stepSizes[press];
           }
         }
       }
-      if (pressed == -1)
+      if (press == -1)
       {
         localCurrentStepSize = 0;
       }
@@ -149,16 +163,9 @@ void scanKeysTask(void * pvParameters) {
       //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       // u8g2.sendBuffer();          // transfer internal memory to the display
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-      
-      if((a==0 && an ==1) || (a==3 && an==2)) {knob3rotation+=1; previnc=1;}
-      else if((a==1 && an==0) || (a==2 && an==3)) {knob3rotation-=1;previnc=-1;}
-      else if((a==0 && an==3) || (a==2 && an==1) || (a==3 && an ==0)) knob3rotation+=previnc;
-      knob3rotation = min(8, max(0, int(knob3rotation)));
-      
-  
+      knob3.getValue(an);
       xSemaphoreGive(keyArrayMutex);
-      a = an;
-      an = ((keyArraycopyy[3]) & 0x03);
+      an = ((keyArrayCopy[3]) & 0x03);
       xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
   }
 }
@@ -181,9 +188,9 @@ void displayUpdateTask(void * pvParameters){
     //   u8g2.drawStr(2,10,keyMap[tmp].c_str());
     // tmp = 0;
 
-    if(pressed != -1)
-      u8g2.drawStr(2,10,keyMap[pressed].c_str());
-    pressed = -1;
+    if(press != -1)
+      u8g2.drawStr(2,10,keyMap[press].c_str());
+    press = -1;
 
     u8g2.setCursor(2,20);
     u8g2.print(keyArray[0],HEX);
@@ -195,7 +202,7 @@ void displayUpdateTask(void * pvParameters){
     u8g2.setCursor(62,20);
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     
-    u8g2.print(knob3rotation,DEC);
+    u8g2.print(knob3.knobrotation,DEC);
     xSemaphoreGive(keyArrayMutex);
     u8g2.setCursor(66,30);
     u8g2.print((char) RX_Message[0]);
@@ -255,13 +262,12 @@ void CAN_RX_ISR (void) {
 
 void setup() {
   // put your setup code here, to run once:
-  
   //initialise queue
   msgInQ = xQueueCreate(36,8);
   msgOutQ = xQueueCreate(36,8);
   //semaphore
 
-  CAN_Init(true);
+  CAN_Init(true);8,
   CAN_RegisterRX_ISR(CAN_RX_ISR);
   CAN_RegisterTX_ISR(CAN_TX_ISR);
   setCANFilter(0x123,0x7ff);
