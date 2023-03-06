@@ -150,40 +150,15 @@ void scanKeysTask(void * pvParameters) {
       // u8g2.sendBuffer();          // transfer internal memory to the display
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
       
-      if((a == 0) && (an == 1))
-      {
-        knob3rotation += 1;
-        previnc = 1;
-      }
-      else if(a==1 && an == 0)
-      {
-        knob3rotation -= 1;
-        previnc = -1;
-      }
-      else if(a==2 && an == 3)
-      {
-        knob3rotation -= 1;
-        previnc = -1;
-      }
-      else if(a==3 && an == 2)
-      {
-        knob3rotation += 1;
-        previnc = 1;
-      }
-      else if(a==0 && an == 3){
-        knob3rotation += previnc;
-      }
-      else if(a==2 && an ==1){
-        knob3rotation += previnc;
-      }
-      else if(a==3 && an ==0){
-        knob3rotation += previnc;
-      }
+      if((a==0 && an ==1) || (a==3 && an==2)) {knob3rotation+=1; previnc=1;}
+      else if((a==1 && an==0) || (a==2 && an==3)) {knob3rotation-=1;previnc=-1;}
+      else if((a==0 && an==3) || (a==2 && an==1) || (a==3 && an ==0)) knob3rotation+=previnc;
       knob3rotation = min(8, max(0, int(knob3rotation)));
+      
+  
       xSemaphoreGive(keyArrayMutex);
       a = an;
       an = ((keyArraycopyy[3]) & 0x03);
-      
       xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
   }
 }
