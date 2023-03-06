@@ -80,12 +80,26 @@ std::string keyMap[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A
 int32_t dog = 0;
 volatile uint8_t knob3rotation = 6;
 
+uint16_t keys_pressed;
+int32_t cVout = 0;
+int32_t Vout[12] = {0};
+
+// Add a local variable to store last cvout then print that
+int32_t frund = 0;
 void sampleISR() {
-  static int32_t phaseAcc = 0;
-  phaseAcc += currentStepSize;
-  int32_t Vout = phaseAcc >> 24;
-  Vout = Vout >> (8 - knob3rotation);
-  analogWrite(OUTR_PIN, (Vout + 128));
+  static int32_t phaseAcc[12] = {0};
+  int32_t cVout = 0;
+  for(int i=0; i<12;i++){
+    if((keys_pressed & (1<<i)) != 0){
+      phaseAcc[i] += stepSizes[i];
+      Vout[i] = (phaseAcc[i] >> 24); 
+      Vout[i] = Vout[i] >> (8 - knob3rotation);
+      cVout += Vout[i];
+    }
+  }
+  cVout = cVout >> 2;
+  frund = cVout;
+  analogWrite(OUTR_PIN, (cVout + 128));
 }
 
 volatile int8_t tmp = 0;
@@ -128,7 +142,8 @@ void scanKeysTask(void * pvParameters) {
       keyArray[i] = readCols();
     }
     xSemaphoreGive(keyArrayMutex);
-      uint8_t keyArraycopyy[7]; 
+      uint8_t keyArraycopyy[7];
+      uint16_t keys_pressed_copy = 0;
       memcpy(&keyArraycopyy, (void*)&keyArray, sizeof keyArray);
       xSemaphoreGive(keyArrayMutex);
       for(uint8_t i = 0; i < 3; i++){
@@ -136,11 +151,13 @@ void scanKeysTask(void * pvParameters) {
         {
           if(!(keyArraycopyy[i] & (1 << j)))
           {
+            keys_pressed_copy |= (1 << (i*4 + j));
             pressed = i*4 + j;
             localCurrentStepSize = stepSizes[pressed];
           }
         }
       }
+      __atomic_store(&keys_pressed, &keys_pressed_copy, __ATOMIC_RELAXED);
       if (pressed == -1)
       {
         localCurrentStepSize = 0;
@@ -215,7 +232,8 @@ void displayUpdateTask(void * pvParameters){
     if(pressed != -1)
       u8g2.drawStr(2,10,keyMap[pressed].c_str());
     pressed = -1;
-
+    u8g2.setCursor(2,30);
+    u8g2.print(frund, DEC);
     u8g2.setCursor(2,20);
     u8g2.print(keyArray[0],HEX);
     u8g2.setCursor(22,20);
@@ -377,9 +395,10 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  static uint32_t next = millis();
-  static uint32_t count = 0;
-  Serial.println(RX_Message[2]);
+  // static uint32_t next = millis();
+  // static uint32_t count = 0;
+  // Serial.println(RX_Message[2]);
+  Serial.println(cVout, DEC);
 
   // if (millis() > next) {
 
