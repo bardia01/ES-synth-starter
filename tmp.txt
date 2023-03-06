@@ -1,0 +1,13 @@
+void decode_knob3(bool prev_a, bool prev_b, bool curr_a, bool curr_b){
+  uint8_t concat_ab = (prev_b << 3) | (prev_a << 2) | (curr_b << 1) | curr_a;
+  int8_t change = rotato[concat_ab];
+  if(change == impossible){
+    local_rotation_variable += prev_change;
+    prev_change = 0;
+  }
+  else{
+    local_rotation_variable += change;
+    prev_change = change;
+  }
+  local_rotation_variable = local_rotation_variable > 8 ? 8 : local_rotation_variable < 0 ? 0 : local_rotation_variable;
+}

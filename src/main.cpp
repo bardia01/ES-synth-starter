@@ -48,11 +48,44 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
 }
 
 volatile uint32_t currentStepSize = 0;
+volatile int8_t rotation_variable = 0;
+
+volatile int8_t prev_change=0;
+
+
+#define increase 1
+#define decrease -1
+#define no_change 0
+#define intermediate 0
+#define impossible 3
+
+const int8_t rotato[16] = { no_change, increase, intermediate, impossible, decrease, no_change, 
+                           impossible, intermediate, intermediate, impossible, no_change,
+                           decrease, impossible, intermediate, increase, no_change}; 
+
+int8_t local_rotation_variable=0;
+void decode_knob3(bool prev_a, bool prev_b, bool curr_a, bool curr_b){
+  uint8_t concat_ab = (prev_b << 3) | (prev_a << 2) | (curr_b << 1) | curr_a;
+  int8_t change = rotato[concat_ab];
+  
+  if(change == impossible){
+    local_rotation_variable += prev_change;
+    prev_change = 0;
+  }
+  else{
+    local_rotation_variable += change;
+    prev_change = change;
+  }
+  local_rotation_variable = local_rotation_variable > 8 ? 8 : local_rotation_variable < 0 ? 0 : local_rotation_variable;
+
+  __atomic_store_n(&rotation_variable, local_rotation_variable, __ATOMIC_ACQ_REL); 
+}
 
 void sampleISR(){
   static uint32_t phaseAcc=0;
   phaseAcc += currentStepSize;
   int32_t Vout = (phaseAcc >> 24) - 128;
+  Vout = Vout >> (8-rotation_variable);
   analogWrite(OUTR_PIN, Vout+128);
 }
 
@@ -88,34 +121,6 @@ constexpr uint8_t key_num_to_char[12] = {'C','C','D','D','E','F','F','G','G','A'
 constexpr bool key_num_to_sharp[12] = {false,true,false,true,false,false,true,false,true,false,true,false};
 
 SemaphoreHandle_t keyArrayMutex;
-volatile int8_t rotation_variable = 0;
-volatile int8_t prev_change=0;
-
-
-#define increase 1
-#define decrease -1
-#define no_change 0
-#define intermediate 0
-#define impossible 3
-
-const int8_t rotato[16] = { no_change, increase, intermediate, impossible, decrease, no_change, 
-                           impossible, intermediate, intermediate, impossible, no_change,
-                           decrease, impossible, intermediate, increase, no_change}; 
-
-
-void decode_knob3(bool prev_a, bool prev_b, bool curr_a, bool curr_b){
-  uint8_t concat_ab = (prev_b << 3) | (prev_a << 2) | (curr_b << 1) | curr_a;
-  int8_t change = rotato[concat_ab];
-  if(change == impossible){
-    rotation_variable += prev_change;
-    prev_change = 0;
-  }
-  else{
-    rotation_variable += change;
-    prev_change = change;
-  }
-  rotation_variable = rotation_variable > 8 ? 8 : rotation_variable < 0 ? 0 : rotation_variable;
-}
 
 uint8_t rotation_it = 0;
 void scanKeysTask(void *pvParameters){
