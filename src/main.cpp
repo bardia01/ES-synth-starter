@@ -88,11 +88,11 @@ void sampleISR() {
   analogWrite(OUTR_PIN, (Vout + 128));
 }
 
-volatile int8_t tmp = 0;
+volatile int8_t prevpress = 0;
 volatile int8_t pressed = -1;
 
 void writetx(uint8_t totx[]){
-  if(tmp == pressed){
+  if(prevpress == pressed){
     totx[0] = 0x52;
   }
   else {
@@ -114,7 +114,7 @@ void scanKeysTask(void * pvParameters) {
   TickType_t xLastWakeTime = xTaskGetTickCount();
   static uint8_t a,an,previnc =0;
   uint8_t TX_Message[8] = {0};
-  tmp = pressed;
+  prevpress = pressed;
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     u8g2.setFont(u8g2_font_ncenB08_tr);
@@ -150,7 +150,6 @@ void scanKeysTask(void * pvParameters) {
       //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       // u8g2.sendBuffer();          // transfer internal memory to the display
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-      
       if((a == 0) && (an == 1))
       {
         knob3rotation += 1;
@@ -208,13 +207,13 @@ void displayUpdateTask(void * pvParameters){
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
     
       // write something to the internal memory
-    // if(tmp != 0)
-    //   u8g2.drawStr(2,10,keyMap[tmp].c_str());
-    // tmp = 0;
+    // if(prevpress != 0)
+    //   u8g2.drawStr(2,10,keyMap[prevpress].c_str());
+    // prevpress = 0;
 
     if(pressed != -1)
       u8g2.drawStr(2,10,keyMap[pressed].c_str());
-    pressed = -1;
+    
 
     u8g2.setCursor(2,20);
     u8g2.print(keyArray[0],HEX);
@@ -379,7 +378,7 @@ void loop() {
   // put your main code here, to run repeatedly:
   static uint32_t next = millis();
   static uint32_t count = 0;
-  Serial.println(RX_Message[2]);
+  Serial.println(pressed);
 
   // if (millis() > next) {
 
