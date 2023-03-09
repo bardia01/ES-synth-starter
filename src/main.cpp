@@ -3,7 +3,7 @@
 #include <STM32FreeRTOS.h>
 #include <string.h>
 #include <ES_CAN.h>
-// #define receiver
+#define receiver
 
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
@@ -86,7 +86,8 @@ const int32_t stepSizes [] = {50953930, 54077542, 57396381, 60715219, 64229283, 
 //[64299564.93684364, 68124038.08814545, 72174973.15141818, 76469940.44741818, 81077269.0013091, 85899345.92, 91006452.48651637]
 std::string keyMap[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 
-
+volatile uint8_t max_id;
+volatile uint8_t g_your_id;
 class Knob {
 
   public:
@@ -128,39 +129,70 @@ uint8_t RX_Message[8]={0};
 
 
 void sampleISR() {
-  // static int32_t phaseAcc[12] = {0};
-  // int32_t cVout = 0;
-  // for(int i=0; i<8;i++){
-  //   if((RX_Message[2] & (1<<i)) != 0){ 
-  //     if(RX_Message[1] > 4){
-  //       phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+  static int32_t phaseAcc[12] = {0};
+  int32_t cVout = 0;
+  for(int i=0; i<8;i++){
+    if((RX_Message[2] & (1<<i)) != 0){ 
+      if(RX_Message[1] > 4){
+        phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+      }
+      else{
+        phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+      }
+      Vout[i] = (phaseAcc[i] >> 24); 
+      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+      cVout += Vout[i];
+    }
+  }
+
+  //   for(int i=0; i<4;i++){
+  //     if((RX_Message[3] & (1<<i)) != 0){ 
+  //       if(RX_Message[1] > 4){
+  //         phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+  //       }
+  //       else{
+  //         phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+  //       }
+  //       Vout[i+8] = (phaseAcc[i+8] >> 24); 
+  //       Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+  //       cVout += Vout[i+8];
   //     }
-  //     else{
-  //       phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
-  //     }
-  //     Vout[i] = (phaseAcc[i] >> 24); 
-  //     Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-  //     cVout += Vout[i];
   //   }
   // }
-
-  // for(int i=0; i<4;i++){
-  //   if((RX_Message[3] & (1<<i)) != 0){ 
-  //     if(RX_Message[1] > 4){
-  //       phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+  // else{
+  //   for(int i=0; i<8;i++){
+  //     if((g_keys_pressed_p1 & (1<<i)) != 0){ 
+  //       if(knob2.knobrotation > 4){
+  //         phaseAcc[i] += stepSizes[i] << (knob2.knobrotation - 4);
+  //       }
+  //       else{
+  //         phaseAcc[i] += stepSizes[i] >> (4 - knob2.knobrotation);
+  //       }
+  //       Vout[i] = (phaseAcc[i] >> 24); 
+  //       Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+  //       cVout += Vout[i];
   //     }
-  //     else{
-  //       phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
-  //     }
-  //     Vout[i+8] = (phaseAcc[i+8] >> 24); 
-  //     Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-  //     cVout += Vout[i+8];
   //   }
+
+  //   for(int i=0; i<4;i++){
+  //     if((g_keys_pressed_p2 & (1<<i)) != 0){ 
+  //       if(knob2.knobrotation > 4){
+  //         phaseAcc[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4);
+  //       }
+  //       else{
+  //         phaseAcc[i+8] += stepSizes[i+8] >> (4 - knob2.knobrotation);
+  //       }
+  //       Vout[i+8] = (phaseAcc[i+8] >> 24); 
+  //       Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+  //       cVout += Vout[i+8];
+  //     }
+  //   }
+
   // }
 
-  // cVout = max(-128, min(127, (int)cVout));
-  // frund = cVout;
-  // analogWrite(OUTR_PIN, (cVout + 128));
+  cVout = max(-128, min(127, (int)cVout));
+  frund = cVout;
+  analogWrite(OUTR_PIN, (cVout + 128));
 }
 
 volatile bool press = 0;
@@ -170,59 +202,61 @@ void writetx(uint8_t totx[]){
   totx[1] = knob2.knobrotation;
   totx[2] = press?g_keys_pressed_p1:totx[2];
   totx[3] = press?g_keys_pressed_p2:totx[3];
-  // totx[4] = my_octave;
+  totx[4] = g_your_id;
 }
 
-
+int dog =5;
 void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   static int8_t an3,an2 =0;
   uint8_t TX_Message[8] = {0};
+  dog=10;
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
-    u8g2.setFont(u8g2_font_ncenB08_tr);
-    u8g2.clearBuffer();         // clear the internal memory
-    uint32_t localCurrentStepSize = 0;
+    dog=15;
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     //Access keyArray here
     for(uint8_t i = 0; i < 7; i++){
       setRow(i);
-      delayMicroseconds(3);
+      // delayMicroseconds();
       keyArray[i] = readCols();
     }
+    dog=20;
     uint8_t keyArrayCopy[7]; 
-    memcpy(keyArrayCopy,(void*)keyArray, sizeof keyArray);
+    memcpy(keyArrayCopy,(void*)&keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
-      uint16_t keys_pressed_copy = 0;
-      xSemaphoreGive(keyArrayMutex);
-      for(uint8_t i = 0; i < 3; i++){
-        for(uint8_t j = 0; j < 4; j++)
-        {
-          if(!(keyArrayCopy[i] & (1 << j)))
-          { 
-            press = 1;
-            keys_pressed_copy |= (1 << (i*4 + j));
-          }
+    dog=30;
+    uint16_t keys_pressed_copy = 0;
+    for(uint8_t i = 0; i < 3; i++){
+      for(uint8_t j = 0; j < 4; j++)
+      {
+        if(!(keyArrayCopy[i] & (1 << j)))
+        { 
+          dog = 1;
+          press = 1;
+          keys_pressed_copy |= (1 << (i*4 + j));
         }
       }
-      uint8_t keys_pressed_p1 = keys_pressed_copy & 0xff;
-      uint8_t keys_pressed_p2 = (keys_pressed_copy >> 8) & 0xff;
-      __atomic_store(&g_keys_pressed_p1, &keys_pressed_p1, __ATOMIC_RELAXED);
-      __atomic_store(&g_keys_pressed_p2, &keys_pressed_p2, __ATOMIC_RELAXED);
-      // Serial.println(keys_pressed_p2, BIN);
-
-      writetx(TX_Message);
-      
-      //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-      // u8g2.sendBuffer();          // transfer internal memory to the display
-      xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-      knob3.getValue(an3);
-      knob2.getValue(an2);
-      xSemaphoreGive(keyArrayMutex);
-      an3 = ((keyArrayCopy[3]) & 0x03);
-      an2 = (((keyArrayCopy[3]) & 0x0C) >> 2);
-      xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
+    }
+    // dog=40;
+    uint8_t keys_pressed_p1 = keys_pressed_copy & 0xff;
+    uint8_t keys_pressed_p2 = (keys_pressed_copy >> 8) & 0xff;
+    __atomic_store(&g_keys_pressed_p1, &keys_pressed_p1, __ATOMIC_RELAXED);
+    __atomic_store(&g_keys_pressed_p2, &keys_pressed_p2, __ATOMIC_RELAXED);
+    // dog = keys_pressed_copy;
+    writetx(TX_Message);
+    
+    //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+    // u8g2.sendBuffer();          // transfer internal memory to the display
+    xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
+    knob3.getValue(an3);
+    knob2.getValue(an2);
+    xSemaphoreGive(keyArrayMutex);
+    an3 = ((keyArrayCopy[3]) & 0x03);
+    an2 = (((keyArrayCopy[3]) & 0x0C) >> 2);
+    // the below statement broke the scankeystask
+    // x  
   }
 }
 void displayUpdateTask(void * pvParameters){
@@ -231,13 +265,18 @@ void displayUpdateTask(void * pvParameters){
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
-    
+    #ifdef receiver
+    while (CAN_CheckRXLevel())
+	    CAN_RX(ID, RX_Message);
+    #endif
     xSemaphoreGive(rxmsgMutex);
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
     
     u8g2.setCursor(2,30);
     u8g2.print(MY_ID, DEC);
+    u8g2.setCursor(15,30);
+    u8g2.print(max_id, DEC);
     u8g2.setCursor(2,20);
     u8g2.print(keyArray[0],HEX);
     u8g2.setCursor(22,20);
@@ -278,40 +317,39 @@ void CANSendTask(void * pvParameters){
 uint8_t keyboard_ids[4] = {0};
 uint8_t keyboard_octs[4] = {0};
 
-
+uint8_t gen_keyboard_id(){
+    uint8_t id = 0;
+    return max_id = max_id + 1;
+}
 void CANDecodeTask(void * pvParameters){
   uint8_t localRX_Message[8];
-  uint8_t l_my_id;
+  uint8_t l_your_id = 0;
   while(1){
-    xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
-    xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
-
-    if((localRX_Message[0] == 8) && MY_ID == 0){ // this message was from the receiver
-      MY_ID = localRX_Message[4];
+   xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
+   xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
+   if(localRX_Message[0] == 0){
+        l_your_id = gen_keyboard_id();
+        __atomic_store(&g_your_id, &l_your_id, __ATOMIC_RELAXED);
     }
     memcpy(RX_Message, localRX_Message, sizeof RX_Message);
-
     // Assign keyboard ids
-   
     xSemaphoreGive(rxmsgMutex);
   }
+  max_id = max_id + l_your_id;
 }
 
-
+#ifdef receiver
   void CAN_RX_ISR (void) {
     uint8_t RX_Message_ISR[8];
     uint32_t ID;
     CAN_RX(ID, RX_Message_ISR);
     xQueueSendFromISR(msgInQ,RX_Message_ISR, NULL);
   }
-  
+#endif
 
 void CAN_TX_ISR (void) {
 	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
 }
-
-
-
 
 
 void setup() {
@@ -322,6 +360,7 @@ void setup() {
   //semaphore
 
   CAN_Init(false);
+  //#ifdef receiver
   CAN_RegisterRX_ISR(CAN_RX_ISR);
   TaskHandle_t candecode = NULL;
   xTaskCreate(
@@ -331,7 +370,7 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     1,			/* Task priority */
     &candecode);	/* Pointer to store the task handle */
-  
+  //#endif
 
   CAN_RegisterTX_ISR(CAN_TX_ISR);
  
@@ -343,7 +382,6 @@ void setup() {
   CAN_TX_Semaphore = xSemaphoreCreateCounting(3,3);
   //initialise the RTOS scheduler
   TaskHandle_t scanKeysHandle = NULL;
-
   xTaskCreate(
   scanKeysTask,		/* Function that implements the task */
   "scanKeys",		/* Text name for the task */
@@ -359,7 +397,7 @@ void setup() {
   256,      		/* Stack size in words, not bytes */
   NULL,			/* Parameter passed into the task */
   2,			/* Task priority */
-  &scanKeysHandle );
+  &displayUpdateHandle );
 
   TaskHandle_t canSend = NULL;
   xTaskCreate(
@@ -412,8 +450,18 @@ void loop() {
   // static uint32_t next = millis();
   // static uint32_t count = 0;
   // Serial.println(RX_Message[2]);
-  Serial.println(g_msgOut[2], BIN);
-  Serial.println(g_msgOut[3], BIN);
+  // Serial.println(g_msgOut[2], BIN);
+  // Serial.println(g_msgOut[3], BIN);
+  // Serial.println(keyArray[0], HEX);
+  // for(uint8_t i = 0; i < 7; i++){
+  //     setRow(i);
+  //     // delayMicroseconds();
+  //     keyArray[i] = readCols();
+  //   }
+  Serial.println(keyArray[0], HEX);
+  // Serial.println(dog, HEX);
+
+  
 
   // if (millis() > next) {
 
