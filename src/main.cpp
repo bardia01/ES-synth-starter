@@ -4,15 +4,22 @@
 #include <string.h>
 #include <ES_CAN.h>
 
+//#define TEST_SCANKEYS 0
+
+
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
+uint32_t joyX;
+uint32_t joyY;
+
 
 //Constants
   const uint32_t interval = 100; //Display update interval
   QueueHandle_t msgInQ;
   QueueHandle_t msgOutQ;
 //Pin definitions
+
   //Row select and enable
   const int RA0_PIN = D3;
   const int RA1_PIN = D6;
@@ -60,7 +67,7 @@ volatile int32_t currentStepSize;
 volatile uint8_t keyArray[7];
 uint8_t readCols() {
   uint8_t cols = 0;
-  cols |= digitalRead(C0_PIN) << 0; // 8'b0 bitor one pin << 0 
+  cols |= digitalRead(C0_PIN) << 0; // 8'b0 bitor one pin << 0
   cols |= digitalRead(C1_PIN) << 1;
   cols |= digitalRead(C2_PIN) << 2;
   cols |= digitalRead(C3_PIN) << 3; // like 00000000 or 00000000 or 00000001 or 00000010 or 00000100
@@ -79,6 +86,19 @@ const int32_t stepSizes [] = {50953930, 54077542, 57396381, 60715219, 64229283, 
 std::string keyMap[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 int32_t dog = 0;
 volatile uint8_t knob3rotation = 6;
+
+void ScanJoystickTask(void * pvParameters){
+  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  while(1){
+    vTaskDelayUntil( &xLastWakeTime, xFrequency );
+    joyX = analogRead(JOYX_PIN);
+    joyY = analogRead(JOYY_PIN);
+    Serial.print("Joy X: ");
+    Serial.println(joyX);
+    Serial.println(joyY);
+  }
+}
 
 void sampleISR() {
   static int32_t phaseAcc = 0;
@@ -115,21 +135,28 @@ void scanKeysTask(void * pvParameters) {
   static uint8_t a,an,previnc =0;
   uint8_t TX_Message[8] = {0};
   tmp = pressed;
+  #define FIRST_RUN = true;
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
+
     u8g2.setFont(u8g2_font_ncenB08_tr);
     u8g2.clearBuffer();         // clear the internal memory
     uint32_t localCurrentStepSize = 0;
+    // Serial.println("We are in the scan keys task");
+    // ScanJoystickTask(NULL);
+    // Serial.println(joyX);
+    // Serial.println(joyY);
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     //Access keyArray here
-    for(uint8_t i = 0; i < 7; i++){
+    for(uint8_t i = 0; i < 4; i++){
       setRow(i);
       delayMicroseconds(3);
       keyArray[i] = readCols();
     }
     xSemaphoreGive(keyArrayMutex);
-      uint8_t keyArraycopyy[7]; 
-      memcpy(&keyArraycopyy, (void*)&keyArray, sizeof keyArray);
+      uint8_t keyArraycopyy[7] = {keyArray[0], keyArray[1], keyArray[2], keyArray[3], keyArray[4], keyArray[5], keyArray[6]};
+      //memcpy(&keyArraycopyy, (void*)&keyArray, sizeof keyArray);
+
       xSemaphoreGive(keyArrayMutex);
       for(uint8_t i = 0; i < 3; i++){
         for(uint8_t j = 0; j < 4; j++)
@@ -146,11 +173,11 @@ void scanKeysTask(void * pvParameters) {
         localCurrentStepSize = 0;
       }
       writetx(TX_Message);
-      
-      //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+
+      __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       // u8g2.sendBuffer();          // transfer internal memory to the display
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-      
+
       if((a == 0) && (an == 1))
       {
         knob3rotation += 1;
@@ -189,15 +216,17 @@ void scanKeysTask(void * pvParameters) {
       xSemaphoreGive(keyArrayMutex);
       a = an;
       an = ((keyArraycopyy[3]) & 0x03);
-      
+
       xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
+      #define FIRST_RUN = false;
+
   }
 }
 void displayUpdateTask(void * pvParameters){
   const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
-  
-  
+
+
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
@@ -206,7 +235,7 @@ void displayUpdateTask(void * pvParameters){
     xSemaphoreGive(rxmsgMutex);
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    
+
       // write something to the internal memory
     // if(tmp != 0)
     //   u8g2.drawStr(2,10,keyMap[tmp].c_str());
@@ -219,26 +248,26 @@ void displayUpdateTask(void * pvParameters){
     u8g2.setCursor(2,20);
     u8g2.print(keyArray[0],HEX);
     u8g2.setCursor(22,20);
-    u8g2.print(keyArray[1],HEX); 
+    u8g2.print(keyArray[1],HEX);
     u8g2.setCursor(42,20);
     u8g2.print(keyArray[2],HEX);
 
     u8g2.setCursor(62,20);
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-    
+
     u8g2.print(knob3rotation,DEC);
     xSemaphoreGive(keyArrayMutex);
     u8g2.setCursor(66,30);
     u8g2.print((char) RX_Message[0]);
     u8g2.print(RX_Message[1]);
     u8g2.print(RX_Message[2]);
-    
+
     // setRow(2);
     // uint8_t keys = readCols();
     // u8g2.setCursor(2,20);
     // u8g2.print(keys,HEX);
     u8g2.sendBuffer();          // transfer internal memory to the display
-    
+
   }
 }
 
@@ -252,7 +281,7 @@ void CANSendTask(void * pvParameters){
 	}
 }
 
-void CANDecodeTask(void * pvParameters){ 
+void CANDecodeTask(void * pvParameters){
   uint32_t localCurrentStepSize = 0;
   uint8_t localRX_Message[8];
   xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
@@ -267,7 +296,7 @@ void CANDecodeTask(void * pvParameters){
       localCurrentStepSize = stepSizes[RX_Message[2]] << (RX_Message[1] - 4);
       __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
     }
-   
+
   }
 }
 
@@ -286,10 +315,10 @@ void CAN_RX_ISR (void) {
 
 void setup() {
   // put your setup code here, to run once:
-  
+
   //initialise queue
   msgInQ = xQueueCreate(36,8);
-  msgOutQ = xQueueCreate(36,8);
+  msgOutQ = xQueueCreate(384,8);
   //semaphore
 
   CAN_Init(true);
@@ -302,16 +331,17 @@ void setup() {
   CAN_TX_Semaphore = xSemaphoreCreateCounting(3,3);
   //initialise the RTOS scheduler
   TaskHandle_t scanKeysHandle = NULL;
-
-  xTaskCreate(
-  scanKeysTask,		/* Function that implements the task */
-  "scanKeys",		/* Text name for the task */
-  64,      		/* Stack size in words, not bytes */
-  NULL,			/* Parameter passed into the task */
-  1,			/* Task priority */
-  &scanKeysHandle );	/* Pointer to store the task handle */
-
+  #ifndef DISABLE_THREADS
+    xTaskCreate(
+    scanKeysTask,		/* Function that implements the task */
+    "scanKeys",		/* Text name for the task */
+    64,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    1,			/* Task priority */
+    &scanKeysHandle );	/* Pointer to store the task handle */
+  #endif
   TaskHandle_t displayUpdateHandle = NULL;
+  #ifndef DISABLE_THREADS
   xTaskCreate(
   displayUpdateTask,		/* Function that implements the task */
   "displayUpdate",		/* Text name for the task */
@@ -319,17 +349,19 @@ void setup() {
   NULL,			/* Parameter passed into the task */
   2,			/* Task priority */
   &scanKeysHandle );
-
+  #endif
   TaskHandle_t candecode = NULL;
+  #ifndef DISABLE_THREADS
   xTaskCreate(
     CANDecodeTask,		/* Function that implements the task */
     "CANDecode",		/* Text name for the task */
     64,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
+    3,			/* Task priority */
     &candecode );	/* Pointer to store the task handle */
-
+  #endif
   TaskHandle_t canSend = NULL;
+  #ifndef DISABLE_THREADS
   xTaskCreate(
     CANSendTask,		/* Function that implements the task */
     "CANSend",		/* Text name for the task */
@@ -337,12 +369,25 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     1,			/* Task priority */
     &canSend );	/* Pointer to store the task handle */
+  #endif
   //Timer setup
+  TaskHandle_t JoystickHandle = NULL;
+  #ifndef DISABLE_THREADS
+  xTaskCreate(
+    ScanJoystickTask,		/* Function that implements the task */
+    "Joystick",		/* Text name for the task */
+    64,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    2,			/* Task priority */
+    &JoystickHandle );	/* Pointer to store the task handle */
+  #endif
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
+  #ifndef DISABLE_THREADS
   sampleTimer->setOverflow(22000, HERTZ_FORMAT);
   sampleTimer->attachInterrupt(sampleISR);
   sampleTimer->resume();
+  #endif
   //Set pin directions
   pinMode(RA0_PIN, OUTPUT);
   pinMode(RA1_PIN, OUTPUT);
@@ -370,23 +415,37 @@ void setup() {
   //Initialise UART
   Serial.begin(9600);
   Serial.println("Hello World");
-
+  Serial.println("before task start");
+  #ifndef DISABLE_THREADS
   vTaskStartScheduler();
+  #endif
+  Serial.println("after task start");
+  #ifdef TEST_SCANKEYS
+    uint32_t startTime = micros();
+    for (int iter = 0; iter < 32; iter++) {
+      //Serial.print("itteration: ");
+      //Serial.println(iter);
+      scanKeysTask(NULL);
+    }
+    Serial.println(micros()-startTime);
+    while(1);
+  #endif
+
 }
 
 
 void loop() {
   // put your main code here, to run repeatedly:
-  static uint32_t next = millis();
-  static uint32_t count = 0;
-  Serial.println(RX_Message[2]);
+  // static uint32_t next = millis();
+  // static uint32_t count = 0;
+  //Serial.println(RX_Message[2]);
 
   // if (millis() > next) {
 
   //   //Serial.println(dog);
   //   next += interval;
   //   //Update display
-    
+
   //   //Toggle LED
   //   digitalToggle(LED_BUILTIN);
   // }
