@@ -113,12 +113,22 @@ int32_t Vout[12] = {0};
 
 // Add a local variable to store last cvout then print that
 int32_t frund = 0;
+uint32_t ID;
+uint8_t RX_Message[8]={0};
+
+volatile bool octave_up = false;
+
 void sampleISR() {
   static int32_t phaseAcc[12] = {0};
   int32_t cVout = 0;
   for(int i=0; i<12;i++){
     if((keys_pressed & (1<<i)) != 0){
-      phaseAcc[i] += stepSizes[i];
+      if(octave_up){
+        phaseAcc[i] += stepSizes[RX_Message[2]] << (RX_Message[1] - 4);
+      }
+      else{
+        phaseAcc[i] += stepSizes[RX_Message[2]] >> (4 - RX_Message[1]);
+      }
       Vout[i] = (phaseAcc[i] >> 24); 
       Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
       cVout += Vout[i];
@@ -137,8 +147,6 @@ void writetx(uint8_t totx[]){
   totx[2] = press!=-1?press:totx[2];
 }
 
-uint32_t ID;
-uint8_t RX_Message[8]={0};
 
 void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
@@ -252,6 +260,7 @@ void CANSendTask(void * pvParameters){
 }
 
 void CANDecodeTask(void * pvParameters){ 
+  bool local_octave_up;;
   uint32_t localCurrentStepSize = 0;
   uint8_t localRX_Message[8];
   xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
@@ -263,11 +272,16 @@ void CANDecodeTask(void * pvParameters){
       __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
     }
     else if(RX_Message[0] == 0x50){
-      if(RX_Message[1] >4)
-      localCurrentStepSize = stepSizes[RX_Message[2]] << (RX_Message[1] - 4);
-      else
-      localCurrentStepSize = stepSizes[RX_Message[2]] >> (4 - RX_Message[1]);
+      if(RX_Message[1] >4){
+        localCurrentStepSize = stepSizes[RX_Message[2]] << (RX_Message[1] - 4);
+        local_octave_up = true;
+      }
+      else {
+        local_octave_up = false;
+        localCurrentStepSize = stepSizes[RX_Message[2]] >> (4 - RX_Message[1]);
+      }
       __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+      __atomic_store_n(&octave_up, local_octave_up, __ATOMIC_RELAXED);
     }
    
   }
