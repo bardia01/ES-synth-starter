@@ -107,12 +107,30 @@ class Knob {
 Knob knob3(8, 0);
 Knob knob2(8, 0);
 
+uint16_t keys_pressed;
+int32_t cVout = 0;
+int32_t Vout[12] = {0};
+
+uint16_t keys_pressed;
+int32_t cVout = 0;
+int32_t Vout[12] = {0};
+
+// Add a local variable to store last cvout then print that
+int32_t frund = 0;
 void sampleISR() {
-  static int32_t phaseAcc = 0;
-  phaseAcc += currentStepSize;
-  int32_t Vout = (phaseAcc >> 24) - 128;
-  Vout = Vout >> (8 - knob3.knobrotation);
-  analogWrite(OUTR_PIN, (Vout + 128));
+  static int32_t phaseAcc[12] = {0};
+  int32_t cVout = 0;
+  for(int i=0; i<12;i++){
+    if((keys_pressed & (1<<i)) != 0){
+      phaseAcc[i] += stepSizes[i];
+      Vout[i] = (phaseAcc[i] >> 24); 
+      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+      cVout += Vout[i];
+    }
+  }
+  cVout = cVout >> 2;
+  frund = cVout;
+  analogWrite(OUTR_PIN, (cVout + 128));
 }
 
 volatile int8_t press = -1;
@@ -146,20 +164,22 @@ void scanKeysTask(void * pvParameters) {
     uint8_t keyArrayCopy[7]; 
     memcpy(&keyArrayCopy, (void*)&keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
+      uint8_t keyArraycopyy[7];
+      uint16_t keys_pressed_copy = 0;
+      memcpy(&keyArraycopyy, (void*)&keyArray, sizeof keyArray);
+      xSemaphoreGive(keyArrayMutex);
       for(uint8_t i = 0; i < 3; i++){
         for(uint8_t j = 0; j < 4; j++)
         {
           if(!(keyArrayCopy[i] & (1 << j)))
           {
-            press = i*4 + j;
-            localCurrentStepSize = stepSizes[press];
+            keys_pressed_copy |= (1 << (i*4 + j));
+            // pressed = i*4 + j;
+            // localCurrentStepSize = stepSizes[pressed];
           }
         }
       }
-      if (press == -1)
-      {
-        localCurrentStepSize = 0;
-      }
+      __atomic_store(&keys_pressed, &keys_pressed_copy, __ATOMIC_RELAXED);
       writetx(TX_Message);
       
       //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
@@ -192,10 +212,11 @@ void displayUpdateTask(void * pvParameters){
     //   u8g2.drawStr(2,10,keyMap[tmp].c_str());
     // tmp = 0;
 
-    if(press != -1)
-      u8g2.drawStr(2,10,keyMap[press].c_str());
-    press = -1;
-
+    // if(pressed != -1)
+    //   u8g2.drawStr(2,10,keyMap[pressed].c_str());
+    // pressed = -1;
+    u8g2.setCursor(2,30);
+    u8g2.print(frund, DEC);
     u8g2.setCursor(2,20);
     u8g2.print(keyArray[0],HEX);
     u8g2.setCursor(22,20);
@@ -361,9 +382,10 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  static uint32_t next = millis();
-  static uint32_t count = 0;
-  Serial.println(RX_Message[2]);
+  // static uint32_t next = millis();
+  // static uint32_t count = 0;
+  // Serial.println(RX_Message[2]);
+  Serial.println(cVout, DEC);
 
   // if (millis() > next) {
 
