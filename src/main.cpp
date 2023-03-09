@@ -290,12 +290,12 @@ void CANDecodeTask(void * pvParameters){
     }
     else if(RX_Message[0] == 0x50){
       if(RX_Message[1] >4){
-        localCurrentStepSize = stepSizes[RX_Message[2]] << (RX_Message[1] - 4);
+        localCurrentStepSize = stepSizes[localRX_Message[2]] << (localRX_Message[1] - 4);
         local_octave_up = true;
       }
       else {
         local_octave_up = false;
-        localCurrentStepSize = stepSizes[RX_Message[2]] >> (4 - RX_Message[1]);
+        localCurrentStepSize = stepSizes[localRX_Message[2]] >> (4 - localRX_Message[1]);
       }
       __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       __atomic_store_n(&octave_up, local_octave_up, __ATOMIC_RELAXED);
