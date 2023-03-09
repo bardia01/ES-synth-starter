@@ -209,8 +209,8 @@ void scanKeysTask(void * pvParameters) {
       }
       uint8_t keys_pressed_p1 = keys_pressed_copy & 0xff;
       uint8_t keys_pressed_p2 = (keys_pressed_copy >> 8) & 0xff;
-      __atomic_store_n(&g_keys_pressed_p1, keys_pressed_p1, __ATOMIC_RELAXED);
-      __atomic_store_n(&g_keys_pressed_p2, keys_pressed_p2, __ATOMIC_RELAXED);
+      __atomic_store(&g_keys_pressed_p1, &keys_pressed_p1, __ATOMIC_RELAXED);
+      __atomic_store(&g_keys_pressed_p2, &keys_pressed_p2, __ATOMIC_RELAXED);
       // Serial.println(keys_pressed_p2, BIN);
 
       writetx(TX_Message);
@@ -242,8 +242,6 @@ void displayUpdateTask(void * pvParameters){
     
     u8g2.setCursor(2,30);
     u8g2.print(MY_ID, DEC);
-    u8g2.setCursor(10,30);
-    u8g2.print(max_id, DEC);
     u8g2.setCursor(2,20);
     u8g2.print(keyArray[0],HEX);
     u8g2.setCursor(22,20);
@@ -286,9 +284,7 @@ uint8_t keyboard_octs[4] = {0};
 
 uint8_t gen_keyboard_id(){
     uint8_t id = 0;
-    id = max_id;
-    max_id = id + 1;
-    return id;
+    return max_id + 1;
 }
 void CANDecodeTask(void * pvParameters){
   uint8_t localRX_Message[8];
@@ -298,7 +294,7 @@ void CANDecodeTask(void * pvParameters){
    xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
    if(localRX_Message[0] == 0){
         l_your_id = gen_keyboard_id();
-        __atomic_store_n(&g_your_id, l_your_id, __ATOMIC_RELAXED);
+        __atomic_store(&g_your_id, &l_your_id, __ATOMIC_RELAXED);
     }
 
     memcpy(RX_Message, localRX_Message, sizeof RX_Message);
