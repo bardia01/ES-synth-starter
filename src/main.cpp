@@ -122,12 +122,12 @@ void sampleISR() {
   static int32_t phaseAcc[12] = {0};
   int32_t cVout = 0;
   for(int i=0; i<12;i++){
-    if((keys_pressed & (1<<i)) != 0){
-      if(octave_up){
-        phaseAcc[i] += stepSizes[RX_Message[2]] << (RX_Message[1] - 4);
+    if((RX_Message[2] & (1<<i)) != 0){ 
+      if(RX_Message[1] > 4){
+        phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
       }
       else{
-        phaseAcc[i] += stepSizes[RX_Message[2]] >> (4 - RX_Message[1]);
+        phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
       }
       Vout[i] = (phaseAcc[i] >> 24); 
       Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
@@ -139,12 +139,12 @@ void sampleISR() {
   analogWrite(OUTR_PIN, (cVout + 128));
 }
 
-volatile int8_t press = -1;
+volatile bool press = 0;
 
 void writetx(uint8_t totx[]){
-  totx[0] = press==-1?0x52:0x50;
+  totx[0] = press?0x50:0x52;
   totx[1] = knob2.knobrotation;
-  totx[2] = press!=-1?press:totx[2];
+  totx[2] = press?keys_pressed:totx[2];
 }
 
 
@@ -168,21 +168,21 @@ void scanKeysTask(void * pvParameters) {
     uint8_t keyArrayCopy[7]; 
     memcpy(keyArrayCopy,(void*)keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
-      uint8_t keyArraycopyy[7];
       uint16_t keys_pressed_copy = 0;
-      memcpy(&keyArraycopyy, (void*)&keyArray, sizeof keyArray);
       xSemaphoreGive(keyArrayMutex);
       for(uint8_t i = 0; i < 3; i++){
         for(uint8_t j = 0; j < 4; j++)
         {
           if(!(keyArrayCopy[i] & (1 << j)))
-          {
+          { 
+            press = 1;
             keys_pressed_copy |= (1 << (i*4 + j));
             // pressed = i*4 + j;
             // localCurrentStepSize = stepSizes[pressed];
           }
         }
       }
+
       __atomic_store(&keys_pressed, &keys_pressed_copy, __ATOMIC_RELAXED);
       writetx(TX_Message);
       
