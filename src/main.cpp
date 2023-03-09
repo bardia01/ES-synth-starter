@@ -166,7 +166,7 @@ void scanKeysTask(void * pvParameters) {
       keyArray[i] = readCols();
     }
     uint8_t keyArrayCopy[7]; 
-    memcpy(&keyArrayCopy, (void*)&keyArray, sizeof keyArray);
+    memcpy(keyArrayCopy,(void*)keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
       uint8_t keyArraycopyy[7];
       uint16_t keys_pressed_copy = 0;
@@ -263,12 +263,9 @@ void CANDecodeTask(void * pvParameters){
   bool local_octave_up;;
   uint32_t localCurrentStepSize = 0;
   uint8_t localRX_Message[8];
-  xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
-  memcpy(&localRX_Message, (void*)&RX_Message, sizeof RX_Message);
-  xSemaphoreGive(rxmsgMutex);
   while(1){
-    xQueueReceive(msgInQ, RX_Message, portMAX_DELAY);
-    if(RX_Message[0] == 0x52){
+    xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
+    if(localRX_Message[0] == 0x52){
       __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
     }
     else if(RX_Message[0] == 0x50){
@@ -283,7 +280,9 @@ void CANDecodeTask(void * pvParameters){
       __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       __atomic_store_n(&octave_up, local_octave_up, __ATOMIC_RELAXED);
     }
-   
+    xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
+    memcpy(RX_Message, localRX_Message, sizeof RX_Message);
+    xSemaphoreGive(rxmsgMutex);
   }
 }
 
