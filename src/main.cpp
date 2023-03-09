@@ -224,20 +224,14 @@ void displayUpdateTask(void * pvParameters){
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
+    #ifdef receiver
     while (CAN_CheckRXLevel())
 	    CAN_RX(ID, RX_Message);
+    #endif
     xSemaphoreGive(rxmsgMutex);
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
     
-      // write something to the internal memory
-    // if(tmp != 0)
-    //   u8g2.drawStr(2,10,keyMap[tmp].c_str());
-    // tmp = 0;
-
-    // if(pressed != -1)
-    //   u8g2.drawStr(2,10,keyMap[pressed].c_str());
-    // pressed = -1;
     u8g2.setCursor(2,30);
     u8g2.print(frund, DEC);
     u8g2.setCursor(2,20);
@@ -259,57 +253,44 @@ void displayUpdateTask(void * pvParameters){
     u8g2.print(RX_Message[1]);
     u8g2.print(RX_Message[2]);
     
-    // setRow(2);
-    // uint8_t keys = readCols();
-    // u8g2.setCursor(2,20);
-    // u8g2.print(keys,HEX);
     u8g2.sendBuffer();          // transfer internal memory to the display
     
   }
 }
 
-
+uint8_t g_msgOut[8];
 void CANSendTask(void * pvParameters){
   uint8_t msgOut[8];
 	while (1) {
-	xQueueReceive(msgOutQ, msgOut, portMAX_DELAY);
+    xQueueReceive(msgOutQ, msgOut, portMAX_DELAY);
+    g_msgOut[2] = msgOut[2];
+    g_msgOut[3] = msgOut[3];
 		xSemaphoreTake(CAN_TX_Semaphore, portMAX_DELAY);
 		CAN_TX(0x123, msgOut);
 	}
 }
 
-#ifdef receiver
+
 void CANDecodeTask(void * pvParameters){
   uint32_t localCurrentStepSize = 0;
   uint8_t localRX_Message[8];
   while(1){
     xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
-    if(localRX_Message[0] == 0x52){
-      __atomic_store_n(&currentStepSize, 0, __ATOMIC_RELAXED);
-    }
-    else if(RX_Message[0] == 0x50){
-      if(RX_Message[1] >4){
-        localCurrentStepSize = stepSizes[localRX_Message[2]] << (localRX_Message[1] - 4);
-        local_octave_up = true;
-      }
-      else {
-        local_octave_up = false;
-        localCurrentStepSize = stepSizes[localRX_Message[2]] >> (4 - localRX_Message[1]);
-      }
-      __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-    }
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
     memcpy(RX_Message, localRX_Message, sizeof RX_Message);
     xSemaphoreGive(rxmsgMutex);
   }
 }
-void CAN_RX_ISR (void) {
-	uint8_t RX_Message_ISR[8];
-	uint32_t ID;
-	CAN_RX(ID, RX_Message_ISR);
-	xQueueSendFromISR(msgInQ,RX_Message_ISR, NULL);
-}
+
+#ifdef receiver
+  void CAN_RX_ISR (void) {
+    uint8_t RX_Message_ISR[8];
+    uint32_t ID;
+    CAN_RX(ID, RX_Message_ISR);
+    xQueueSendFromISR(msgInQ,RX_Message_ISR, NULL);
+  }
 #endif
+
 void CAN_TX_ISR (void) {
 	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
 }
@@ -366,8 +347,6 @@ void setup() {
   2,			/* Task priority */
   &scanKeysHandle );
 
-    
-  
   TaskHandle_t canSend = NULL;
   xTaskCreate(
     CANSendTask,		/* Function that implements the task */
@@ -419,8 +398,8 @@ void loop() {
   // static uint32_t next = millis();
   // static uint32_t count = 0;
   // Serial.println(RX_Message[2]);
-  Serial.println(RX_Message[2], BIN);
-  Serial.println(RX_Message[3], BIN);
+  Serial.println(g_msgOut[2], BIN);
+  Serial.println(g_msgOut[3], BIN);
 
   // if (millis() > next) {
 
