@@ -107,7 +107,9 @@ class Knob {
 Knob knob3(8, 0);
 Knob knob2(8, 0);
 
-uint16_t keys_pressed;
+uint8_t g_keys_pressed_p1;
+uint8_t g_keys_pressed_p2;
+
 int32_t cVout = 0;
 int32_t Vout[12] = {0};
 
@@ -121,7 +123,7 @@ volatile bool octave_up = false;
 void sampleISR() {
   static int32_t phaseAcc[12] = {0};
   int32_t cVout = 0;
-  for(int i=0; i<12;i++){
+  for(int i=0; i<8;i++){
     if((RX_Message[2] & (1<<i)) != 0){ 
       if(RX_Message[1] > 4){
         phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
@@ -134,6 +136,21 @@ void sampleISR() {
       cVout += Vout[i];
     }
   }
+
+  for(int i=0; i<4;i++){
+    if((RX_Message[3] & (1<<i)) != 0){ 
+      if(RX_Message[1] > 4){
+        phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+      }
+      else{
+        phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+      }
+      Vout[i+8] = (phaseAcc[i+8] >> 24); 
+      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+      cVout += Vout[i+8];
+    }
+  }
+
   cVout = max(-128, min(127, (int)cVout));
   frund = cVout;
   analogWrite(OUTR_PIN, (cVout + 128));
@@ -144,7 +161,8 @@ volatile bool press = 0;
 void writetx(uint8_t totx[]){
   totx[0] = press?0x50:0x52;
   totx[1] = knob2.knobrotation;
-  totx[2] = press?keys_pressed:totx[2];
+  totx[2] = press?g_keys_pressed_p1:totx[2];
+  totx[3] = press?g_keys_pressed_p2:totx[3];
 }
 
 
@@ -177,13 +195,15 @@ void scanKeysTask(void * pvParameters) {
           { 
             press = 1;
             keys_pressed_copy |= (1 << (i*4 + j));
-            // pressed = i*4 + j;
-            // localCurrentStepSize = stepSizes[pressed];
           }
         }
       }
+      uint8_t keys_pressed_p1 = keys_pressed_copy & 0xff;
+      uint8_t keys_pressed_p2 = (keys_pressed_copy >> 8) & 0xff;
+      __atomic_store(&g_keys_pressed_p1, &keys_pressed_p1, __ATOMIC_RELAXED);
+      __atomic_store(&g_keys_pressed_p2, &keys_pressed_p2, __ATOMIC_RELAXED);
+      // Serial.println(keys_pressed_p2, BIN);
 
-      __atomic_store(&keys_pressed, &keys_pressed_copy, __ATOMIC_RELAXED);
       writetx(TX_Message);
       
       //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
