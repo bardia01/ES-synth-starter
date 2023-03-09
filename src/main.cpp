@@ -111,10 +111,6 @@ uint16_t keys_pressed;
 int32_t cVout = 0;
 int32_t Vout[12] = {0};
 
-uint16_t keys_pressed;
-int32_t cVout = 0;
-int32_t Vout[12] = {0};
-
 // Add a local variable to store last cvout then print that
 int32_t frund = 0;
 void sampleISR() {
@@ -128,7 +124,7 @@ void sampleISR() {
       cVout += Vout[i];
     }
   }
-  cVout = cVout >> 2;
+  cVout = max(-128, min(127, (int)cVout));
   frund = cVout;
   analogWrite(OUTR_PIN, (cVout + 128));
 }
