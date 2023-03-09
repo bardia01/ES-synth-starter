@@ -3,6 +3,7 @@
 #include <STM32FreeRTOS.h>
 #include <string.h>
 #include <ES_CAN.h>
+#include <math.h>
 
 //#define TEST_SCANKEYS 0
 
@@ -12,8 +13,11 @@ SemaphoreHandle_t rxmsgMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
 uint32_t joyX;
 uint32_t joyY;
-
-
+float filter_coeffs [] = {0.1, 0.2,0.3, 0.4, 0.5};
+float delay_filter [5] = {0, 0, 0, 0, 0};
+const uint16_t DEGREES_IN_CIRCLE = 360;
+const uint16_t TABLE_SIZE = 1000;
+float sine_table[TABLE_SIZE];
 //Constants
   const uint32_t interval = 100; //Display update interval
   QueueHandle_t msgInQ;
@@ -62,6 +66,44 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       digitalWrite(REN_PIN,LOW);
 }
 
+// FIR filter
+double apply_fir_filter(double input)
+{
+  // Shift the delay line
+  for (int i = 4; i > 0; i--)
+  {
+    delay_filter[i] = delay_filter[i-1];
+  }
+
+  // Add the new sample to the delay line
+  delay_filter[0] = input;
+
+  // Compute the output of the FIR filter
+  double output = 0;
+  for (int i = 0; i < 5; i++)
+  {
+    output += filter_coeffs[i] * delay_filter[i];
+  }
+
+  return output;
+}
+
+// Generate Sine Table
+void init_sine_table() {
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        double angle = i * DEGREES_IN_CIRCLE / static_cast<float>(TABLE_SIZE);
+        sine_table[i] = sin(angle);
+    }
+}
+
+double get_sine_value(double frequency, double sample_rate) {
+    // Convert the frequency to an angle in degrees
+    double angle = frequency * DEGREES_IN_CIRCLE / sample_rate;
+    int index = static_cast<int>(angle * TABLE_SIZE / DEGREES_IN_CIRCLE) % TABLE_SIZE;
+    double sine_value = sine_table[index];
+    return sine_value;
+}
+
 //Lab 1 section 1, reading a single row of the key matrix
 volatile int32_t currentStepSize;
 volatile uint8_t keyArray[7];
@@ -103,8 +145,12 @@ void ScanJoystickTask(void * pvParameters){
 void sampleISR() {
   static int32_t phaseAcc = 0;
   phaseAcc += currentStepSize;
+  uint8_t A = 5;
+
+  // Vout =
   int32_t Vout = phaseAcc >> 24;
   Vout = Vout >> (8 - knob3rotation);
+  Vout = apply_fir_filter(Vout);
   analogWrite(OUTR_PIN, (Vout + 128));
 }
 
@@ -135,7 +181,7 @@ void scanKeysTask(void * pvParameters) {
   static uint8_t a,an,previnc =0;
   uint8_t TX_Message[8] = {0};
   tmp = pressed;
-  #define FIRST_RUN = true;
+  // #define FIRST_RUN = true;
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
 
@@ -310,7 +356,6 @@ void CAN_RX_ISR (void) {
 	CAN_RX(ID, RX_Message_ISR);
 	xQueueSendFromISR(msgInQ, RX_Message_ISR, NULL);
 }
-
 
 
 void setup() {
