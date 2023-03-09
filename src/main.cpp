@@ -3,6 +3,7 @@
 #include <STM32FreeRTOS.h>
 #include <string.h>
 #include <ES_CAN.h>
+//#define receiver
 
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
@@ -118,7 +119,6 @@ int32_t frund = 0;
 uint32_t ID;
 uint8_t RX_Message[8]={0};
 
-volatile bool octave_up = false;
 
 void sampleISR() {
   static int32_t phaseAcc[12] = {0};
@@ -163,6 +163,7 @@ void writetx(uint8_t totx[]){
   totx[1] = knob2.knobrotation;
   totx[2] = press?g_keys_pressed_p1:totx[2];
   totx[3] = press?g_keys_pressed_p2:totx[3];
+  totx[4] = 0;
 }
 
 
@@ -220,8 +221,6 @@ void scanKeysTask(void * pvParameters) {
 void displayUpdateTask(void * pvParameters){
   const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
-  
-  
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
@@ -279,8 +278,8 @@ void CANSendTask(void * pvParameters){
 	}
 }
 
-void CANDecodeTask(void * pvParameters){ 
-  bool local_octave_up;;
+#ifdef receiver
+void CANDecodeTask(void * pvParameters){
   uint32_t localCurrentStepSize = 0;
   uint8_t localRX_Message[8];
   while(1){
@@ -298,24 +297,24 @@ void CANDecodeTask(void * pvParameters){
         localCurrentStepSize = stepSizes[localRX_Message[2]] >> (4 - localRX_Message[1]);
       }
       __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-      __atomic_store_n(&octave_up, local_octave_up, __ATOMIC_RELAXED);
     }
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
     memcpy(RX_Message, localRX_Message, sizeof RX_Message);
     xSemaphoreGive(rxmsgMutex);
   }
 }
-
-void CAN_TX_ISR (void) {
-	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
-}
-
 void CAN_RX_ISR (void) {
 	uint8_t RX_Message_ISR[8];
 	uint32_t ID;
 	CAN_RX(ID, RX_Message_ISR);
-	xQueueSendFromISR(msgInQ, RX_Message_ISR, NULL);
+	xQueueSendFromISR(msgInQ,RX_Message_ISR, NULL);
 }
+#endif
+void CAN_TX_ISR (void) {
+	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
+}
+
+
 
 
 
@@ -326,10 +325,23 @@ void setup() {
   msgOutQ = xQueueCreate(36,8);
   //semaphore
 
-  CAN_Init(true);8,
+  CAN_Init(false);
+  #ifdef receiver
   CAN_RegisterRX_ISR(CAN_RX_ISR);
+  TaskHandle_t candecode = NULL;
+  xTaskCreate(
+    CANDecodeTask,		/* Function that implements the task */
+    "CANDecode",		/* Text name for the task */
+    64,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    1,			/* Task priority */
+    &candecode);	/* Pointer to store the task handle */
+  #endif
+
   CAN_RegisterTX_ISR(CAN_TX_ISR);
+ 
   setCANFilter(0x123,0x7ff);
+
   CAN_Start();
   keyArrayMutex = xSemaphoreCreateMutex();
   rxmsgMutex = xSemaphoreCreateMutex();
@@ -354,15 +366,8 @@ void setup() {
   2,			/* Task priority */
   &scanKeysHandle );
 
-  TaskHandle_t candecode = NULL;
-  xTaskCreate(
-    CANDecodeTask,		/* Function that implements the task */
-    "CANDecode",		/* Text name for the task */
-    64,      		/* Stack size in words, not bytes */
-    NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
-    &candecode );	/* Pointer to store the task handle */
-
+    
+  
   TaskHandle_t canSend = NULL;
   xTaskCreate(
     CANSendTask,		/* Function that implements the task */
@@ -414,7 +419,8 @@ void loop() {
   // static uint32_t next = millis();
   // static uint32_t count = 0;
   // Serial.println(RX_Message[2]);
-  Serial.println(cVout, DEC);
+  Serial.println(RX_Message[2], BIN);
+  Serial.println(RX_Message[3], BIN);
 
   // if (millis() > next) {
 
