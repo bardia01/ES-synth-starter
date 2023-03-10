@@ -3,6 +3,7 @@
 #include <STM32FreeRTOS.h>
 #include <string.h>
 #include <ES_CAN.h>
+#include <math.h>
 
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
@@ -60,7 +61,7 @@ volatile int32_t currentStepSize;
 volatile uint8_t keyArray[7];
 uint8_t readCols() {
   uint8_t cols = 0;
-  cols |= digitalRead(C0_PIN) << 0; // 8'b0 bitor one pin << 0 
+  cols |= digitalRead(C0_PIN) << 0; // 8'b0 bitor one pin << 0
   cols |= digitalRead(C1_PIN) << 1;
   cols |= digitalRead(C2_PIN) << 2;
   cols |= digitalRead(C3_PIN) << 3; // like 00000000 or 00000000 or 00000001 or 00000010 or 00000100
@@ -77,6 +78,7 @@ void setRow(uint8_t rowIdx){
 const int32_t stepSizes [] = {50953930, 54077542, 57396381, 60715219, 64229283, 68133799, 72233540, 76528508, 81018701, 85899345, 90975216, 96441538}; // = 2^32 * f / Fs = 2^32 * 440 / 22k
 //[64299564.93684364, 68124038.08814545, 72174973.15141818, 76469940.44741818, 81077269.0013091, 85899345.92, 91006452.48651637]
 std::string keyMap[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+const uint8_t sinLUT[] = {128, 135, 141, 148, 154, 160, 166, 172, 177, 183, 188, 193, 198, 202, 206, 210, 214, 217, 220, 223, 225, 227, 229, 230, 231, 231, 231, 231, 230, 229, 227, 225, 223, 220, 217, 214, 210, 206, 202, 198, 193, 188, 183, 177, 172, 166, 160, 154, 148, 141, 135, 128, 121, 115, 108, 102, 96, 90, 84, 79, 73, 68, 63, 58, 54, 50, 46, 42, 39, 36, 33, 31, 29, 27, 26, 25, 25, 25, 25, 26, 27, 29, 31, 33, 36, 39, 42, 46, 50, 54, 58, 63, 68, 73, 79, 84, 90, 96, 102, 108, 115, 121};
 
 
 class Knob {
@@ -119,34 +121,79 @@ uint32_t ID;
 uint8_t RX_Message[8]={0};
 
 volatile bool octave_up = false;
+float filter_coeffs [] = {0.1, 0.2,0.3, 0.4, 0.5};
+float delay_filter [5] = {0, 0, 0, 0, 0};
+const uint16_t DEGREES_IN_CIRCLE = 360;
+const uint16_t TABLE_SIZE = 1028;
+int32_t sine_table[TABLE_SIZE];
+
+double apply_fir_filter(double input)
+{
+  // Shift the delay line
+  for (int i = 4; i > 0; i--)
+  {
+    delay_filter[i] = delay_filter[i-1];
+  }
+
+  // Add the new sample to the delay line
+  delay_filter[0] = input;
+
+  // Compute the output of the FIR filter
+  double output = 0;
+  for (int i = 0; i < 5; i++)
+  {
+    output += filter_coeffs[i] * delay_filter[i];
+  }
+
+  return output;
+}
+
+// Generate Sine Table
+void init_sine_table() {
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        uint32_t angle = i * 2 * 3/ (TABLE_SIZE);
+        sine_table[i] = (sin(angle)+1)*128;
+        // Serial.print("angle: ");
+        // Serial.println(angle);
+    }
+}
+
+
+
 
 void sampleISR() {
   static int32_t phaseAcc[12] = {0};
   int32_t cVout = 0;
+  uint32_t index;
   for(int i=0; i<8;i++){
-    if((RX_Message[2] & (1<<i)) != 0){ 
+    if((RX_Message[2] & (1<<i)) != 0){
       if(RX_Message[1] > 4){
         phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
       }
       else{
         phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
       }
-      Vout[i] = (phaseAcc[i] >> 24); 
+      index = 1027*(phaseAcc[i])/UINT32_MAX;
+      Vout[i] = sine_table[index];
       Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
       cVout += Vout[i];
+      //Serial.println(Vout[i]);
     }
   }
 
   for(int i=0; i<4;i++){
-    if((RX_Message[3] & (1<<i)) != 0){ 
+    if((RX_Message[3] & (1<<i)) != 0){
       if(RX_Message[1] > 4){
         phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
       }
       else{
         phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
       }
-      Vout[i+8] = (phaseAcc[i+8] >> 24); 
+      index = 1027*(phaseAcc[i])/UINT32_MAX;
+      Vout[i+8] = sine_table[index];
+      // Vout[i+8] = (Vout[i+8] >> 24);
       Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+      //Serial.println(Vout[i]);
       cVout += Vout[i+8];
     }
   }
@@ -183,7 +230,7 @@ void scanKeysTask(void * pvParameters) {
       delayMicroseconds(3);
       keyArray[i] = readCols();
     }
-    uint8_t keyArrayCopy[7]; 
+    uint8_t keyArrayCopy[7];
     memcpy(keyArrayCopy,(void*)keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
       uint16_t keys_pressed_copy = 0;
@@ -192,7 +239,7 @@ void scanKeysTask(void * pvParameters) {
         for(uint8_t j = 0; j < 4; j++)
         {
           if(!(keyArrayCopy[i] & (1 << j)))
-          { 
+          {
             press = 1;
             keys_pressed_copy |= (1 << (i*4 + j));
           }
@@ -205,7 +252,7 @@ void scanKeysTask(void * pvParameters) {
       // Serial.println(keys_pressed_p2, BIN);
 
       writetx(TX_Message);
-      
+
       //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       // u8g2.sendBuffer();          // transfer internal memory to the display
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
@@ -220,8 +267,8 @@ void scanKeysTask(void * pvParameters) {
 void displayUpdateTask(void * pvParameters){
   const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
-  
-  
+
+
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
@@ -230,7 +277,7 @@ void displayUpdateTask(void * pvParameters){
     xSemaphoreGive(rxmsgMutex);
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    
+
       // write something to the internal memory
     // if(tmp != 0)
     //   u8g2.drawStr(2,10,keyMap[tmp].c_str());
@@ -244,13 +291,13 @@ void displayUpdateTask(void * pvParameters){
     u8g2.setCursor(2,20);
     u8g2.print(keyArray[0],HEX);
     u8g2.setCursor(22,20);
-    u8g2.print(keyArray[1],HEX); 
+    u8g2.print(keyArray[1],HEX);
     u8g2.setCursor(42,20);
     u8g2.print(keyArray[2],HEX);
 
     u8g2.setCursor(62,20);
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-    
+
     u8g2.print(knob3.knobrotation,DEC);
     u8g2.setCursor(82,20);
     u8g2.print(knob2.knobrotation,DEC);
@@ -259,13 +306,13 @@ void displayUpdateTask(void * pvParameters){
     u8g2.print((char) RX_Message[0]);
     u8g2.print(RX_Message[1]);
     u8g2.print(RX_Message[2]);
-    
+
     // setRow(2);
     // uint8_t keys = readCols();
     // u8g2.setCursor(2,20);
     // u8g2.print(keys,HEX);
     u8g2.sendBuffer();          // transfer internal memory to the display
-    
+
   }
 }
 
@@ -279,7 +326,7 @@ void CANSendTask(void * pvParameters){
 	}
 }
 
-void CANDecodeTask(void * pvParameters){ 
+void CANDecodeTask(void * pvParameters){
   bool local_octave_up;;
   uint32_t localCurrentStepSize = 0;
   uint8_t localRX_Message[8];
@@ -400,7 +447,7 @@ void setup() {
   setOutMuxBit(DRST_BIT, HIGH);  //Release display logic reset
   u8g2.begin();
   setOutMuxBit(DEN_BIT, HIGH);  //Enable display power supply
-
+  init_sine_table();
   //Initialise UART
   Serial.begin(9600);
   Serial.println("Hello World");
@@ -415,13 +462,13 @@ void loop() {
   // static uint32_t count = 0;
   // Serial.println(RX_Message[2]);
   Serial.println(cVout, DEC);
-
+  Serial.println(sine_table[250]);
   // if (millis() > next) {
 
   //   //Serial.println(dog);
   //   next += interval;
   //   //Update display
-    
+
   //   //Toggle LED
   //   digitalToggle(LED_BUILTIN);
   // }
