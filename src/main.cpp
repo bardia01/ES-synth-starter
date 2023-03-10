@@ -149,13 +149,17 @@ double apply_fir_filter(double input)
 }
 
 // Generate Sine Table
-void init_sine_table() {
-    for (int i = 0; i < TABLE_SIZE; i++) {
-        uint32_t angle = i * 2 * 3/ (TABLE_SIZE);
-        sine_table[i] = (sin(angle)+1)*128;
-        // Serial.print("angle: ");
-        // Serial.println(angle);
-    }
+volatile int8_t sinwave [1024];
+
+void gensin(){
+  float step = 2*3.14159265358979323846 / 1024;
+  float phase = 0;
+  for(uint32_t i = 0; i<1024; i++){
+    //Serial.println(sin(phase));
+    sinwave[i] = (int)(127.0*sin(phase));
+    //Serial.println(sinwave[i]);
+    phase += step;
+  }
 }
 
 
@@ -447,11 +451,10 @@ void setup() {
   setOutMuxBit(DRST_BIT, HIGH);  //Release display logic reset
   u8g2.begin();
   setOutMuxBit(DEN_BIT, HIGH);  //Enable display power supply
-  init_sine_table();
   //Initialise UART
   Serial.begin(9600);
   Serial.println("Hello World");
-
+  gensin();
   vTaskStartScheduler();
 }
 
