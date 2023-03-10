@@ -2,6 +2,7 @@
 #include <U8g2lib.h>
 #include <STM32FreeRTOS.h>
 #include <string.h>
+#include <math.h>
 #include <ES_CAN.h>
 
 SemaphoreHandle_t keyArrayMutex;
@@ -42,6 +43,19 @@ SemaphoreHandle_t CAN_TX_Semaphore;
 
 //Display driver object
 U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
+
+volatile int8_t sinwave [1024];
+
+void gensin(){
+  float step = 2*3.14159265358979323846 / 1024;
+  float phase = 0;
+  for(uint32_t i = 0; i<1024; i++){
+    //Serial.println(sin(phase));
+    sinwave[i] = (int)(127.0*sin(phase));
+    //Serial.println(sinwave[i]);
+    phase += step;
+  }
+}
 
 //Function to set outputs using key matrix
 void setOutMuxBit(const uint8_t bitIdx, const bool value) {
@@ -106,7 +120,7 @@ class Knob {
 
 Knob knob3(8, 0);
 Knob knob2(8, 0);
-
+Knob knob1(8,0);
 uint8_t g_keys_pressed_p1;
 uint8_t g_keys_pressed_p2;
 
@@ -123,34 +137,68 @@ volatile bool octave_up = false;
 void sampleISR() {
   static int32_t phaseAcc[12] = {0};
   int32_t cVout = 0;
-  for(int i=0; i<8;i++){
-    if((RX_Message[2] & (1<<i)) != 0){ 
-      if(RX_Message[1] > 4){
-        phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+  if(RX_Message[4] > 3){
+    for(int i=0; i<8;i++){
+      if((RX_Message[2] & (1<<i)) != 0){ 
+        if(RX_Message[1] > 4){
+          phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+        }
+        else{
+          phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+        }
+        Vout[i] = (phaseAcc[i] >> 24); 
+        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+        cVout += Vout[i];
       }
-      else{
-        phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+    }
+    for(int i=0; i<4;i++){
+      if((RX_Message[3] & (1<<i)) != 0){ 
+        if(RX_Message[1] > 4){
+          phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+        }
+        else{
+          phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+        }
+        Vout[i+8] = (phaseAcc[i+8] >> 24); 
+        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+        cVout += Vout[i+8];
       }
-      Vout[i] = (phaseAcc[i] >> 24); 
-      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-      cVout += Vout[i];
     }
   }
+  else{
+    for(int i=0; i<8;i++){
+      if((RX_Message[2] & (1<<i)) != 0){ 
+        if(RX_Message[1] > 4){
+          phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+        }
+        else{
+          phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+        }
 
-  for(int i=0; i<4;i++){
-    if((RX_Message[3] & (1<<i)) != 0){ 
-      if(RX_Message[1] > 4){
-        phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+        uint32_t d = (phaseAcc[i] >> 22);
+        
+        //make table 1024, 
+        Vout[i] = (sinwave[d]); 
+        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+        cVout += Vout[i];
       }
-      else{
-        phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+    }
+    for(int i=0; i<4;i++){
+      if((RX_Message[3] & (1<<i)) != 0){ 
+        if(RX_Message[1] > 4){
+          phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+        }
+        else{
+          phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+        }
+        uint32_t d = (phaseAcc[i+8] >> 22);
+
+        Vout[i+8] = (sinwave[d]); 
+        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+        cVout += Vout[i+8];
       }
-      Vout[i+8] = (phaseAcc[i+8] >> 24); 
-      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-      cVout += Vout[i+8];
     }
   }
-
   cVout = max(-128, min(127, (int)cVout));
   frund = cVout;
   analogWrite(OUTR_PIN, (cVout + 128));
@@ -163,13 +211,14 @@ void writetx(uint8_t totx[]){
   totx[1] = knob2.knobrotation;
   totx[2] = press?g_keys_pressed_p1:totx[2];
   totx[3] = press?g_keys_pressed_p2:totx[3];
+  totx[4] = knob1.knobrotation;
 }
 
 
 void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
-  static int8_t an3,an2 =0;
+  static int8_t an3,an2,an1 =0;
   uint8_t TX_Message[8] = {0};
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
@@ -211,9 +260,11 @@ void scanKeysTask(void * pvParameters) {
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
       knob3.getValue(an3);
       knob2.getValue(an2);
+      knob1.getValue(an1);
       xSemaphoreGive(keyArrayMutex);
       an3 = ((keyArrayCopy[3]) & 0x03);
       an2 = (((keyArrayCopy[3]) & 0x0C) >> 2);
+      an1 = ((keyArrayCopy[4])& 0x03);
       xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
   }
 }
@@ -254,12 +305,13 @@ void displayUpdateTask(void * pvParameters){
     u8g2.print(knob3.knobrotation,DEC);
     u8g2.setCursor(82,20);
     u8g2.print(knob2.knobrotation,DEC);
+    u8g2.print(knob1.knobrotation,DEC);
     xSemaphoreGive(keyArrayMutex);
     u8g2.setCursor(66,30);
     u8g2.print((char) RX_Message[0]);
     u8g2.print(RX_Message[1]);
     u8g2.print(RX_Message[2]);
-    
+    u8g2.print(RX_Message[3]);
     // setRow(2);
     // uint8_t keys = readCols();
     // u8g2.setCursor(2,20);
@@ -404,7 +456,7 @@ void setup() {
   //Initialise UART
   Serial.begin(9600);
   Serial.println("Hello World");
-
+  gensin();
   vTaskStartScheduler();
 }
 
@@ -414,8 +466,8 @@ void loop() {
   // static uint32_t next = millis();
   // static uint32_t count = 0;
   // Serial.println(RX_Message[2]);
-  Serial.println(cVout, DEC);
-
+  // Serial.println(cVout, DEC);
+  // Serial.println(sinwave[0]);
   // if (millis() > next) {
 
   //   //Serial.println(dog);
