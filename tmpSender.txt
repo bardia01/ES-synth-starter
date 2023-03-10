@@ -21,6 +21,8 @@ SemaphoreHandle_t CAN_TX_Semaphore;
   const uint32_t interval = 100; //Display update interval
   QueueHandle_t msgInQ;
   QueueHandle_t msgOutQ;
+  QueueHandle_t out_handshakeQ;
+
 //Pin definitions
   //Row select and enable
   const int RA0_PIN = D3;
@@ -133,39 +135,39 @@ uint8_t RX_Message[8]={0};
 
 
 void sampleISR() {
-  static int32_t phaseAcc[12] = {0};
-  int32_t cVout = 0;
-  for(int i=0; i<8;i++){
-    if((RX_Message[2] & (1<<i)) != 0){ 
-      if(RX_Message[1] > 4){
-        phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
-      }
-      else{
-        phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
-      }
-      Vout[i] = (phaseAcc[i] >> 24); 
-      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-      cVout += Vout[i];
-    }
-  }
+  // static int32_t phaseAcc[12] = {0};
+  // int32_t cVout = 0;
+  // for(int i=0; i<8;i++){
+  //   if((RX_Message[2] & (1<<i)) != 0){ 
+  //     if(RX_Message[1] > 4){
+  //       phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+  //     }
+  //     else{
+  //       phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+  //     }
+  //     Vout[i] = (phaseAcc[i] >> 24); 
+  //     Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+  //     cVout += Vout[i];
+  //   }
+  // }
 
-  for(int i=0; i<4;i++){
-    if((RX_Message[3] & (1<<i)) != 0){ 
-      if(RX_Message[1] > 4){
-        phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
-      }
-      else{
-        phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
-      }
-      Vout[i+8] = (phaseAcc[i+8] >> 24); 
-      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-      cVout += Vout[i+8];
-    }
-  }
+  // for(int i=0; i<4;i++){
+  //   if((RX_Message[3] & (1<<i)) != 0){ 
+  //     if(RX_Message[1] > 4){
+  //       phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+  //     }
+  //     else{
+  //       phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+  //     }
+  //     Vout[i+8] = (phaseAcc[i+8] >> 24); 
+  //     Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+  //     cVout += Vout[i+8];
+  //   }
+  // }
 
-  cVout = max(-128, min(127, (int)cVout));
-  frund = cVout;
-  analogWrite(OUTR_PIN, (cVout + 128));
+  // cVout = max(-128, min(127, (int)cVout));
+  // frund = cVout;
+  // analogWrite(OUTR_PIN, (cVout + 128));
 }
 
 volatile bool press = 0;
@@ -180,35 +182,23 @@ void writetx(uint8_t totx[]){
 
 bool g_outBits[7] = {true, true, true, true, true, true, true};
 
-void handshakeTask(void* pvParameters){
-  const TickType_t xFrequency = 200/portTICK_PERIOD_MS;
-  TickType_t xLastWakeTime = xTaskGetTickCount();
-  while(1){
-    vTaskDelayUntil( &xLastWakeTime, xFrequency);
-    for(uint8_t i = 0; i < 7; i++){
-      setRow(i);// line below breaks code
-      digitalWrite(OUT_PIN,g_outBits[i]); //Set value to latch in DFF
-      digitalWrite(REN_PIN,1);   
-      delayMicroseconds(3);
-      digitalWrite(REN_PIN,0);     
-    }
-    Serial.println("alive");
-  }
-}
-
 void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   static int8_t an3,an2 =0;
   uint8_t TX_Message[8] = {0};
   while(1){
-    vTaskDelayUntil( &xLastWakeTime, xFrequency);
+    vTaskDelayUntil( &xLastWakeTime, xFrequency );
     u8g2.setFont(u8g2_font_ncenB08_tr);
     u8g2.clearBuffer();         // clear the internal memory
+    uint32_t localCurrentStepSize = 0;
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     //Access keyArray here
+    uint8_t out_handshake[7];
+    xQueueReceive(out_handshakeQ, out_handshake, portMAX_DELAY);
     for(uint8_t i = 0; i < 7; i++){
-      setRow(i); //Set value to latch in DFF
+      setRow(i);
+      digitalWrite(OUT_PIN,out_handshake[i]); //Set value to latch in DFF
       digitalWrite(REN_PIN,1);   
       delayMicroseconds(3);
       keyArray[i] = readCols();
@@ -324,7 +314,8 @@ void CANDecodeTask(void * pvParameters){
      
         l_myPos = max((int)g_myPos, localRX_Message[4] + 1);
         bool l_outBits[7] = {true, true, true, true, true, false, false};
-        memcpy(g_outBits, l_outBits, sizeof l_outBits);
+        //memcpy(g_outBits, l_outBits, sizeof l_outBits);
+          xQueueSend(out_handshakeQ, l_outBits, portMAX_DELAY);
         __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
 
     }
@@ -360,6 +351,7 @@ void setup() {
   //initialise queue
   msgInQ = xQueueCreate(36,8);
   msgOutQ = xQueueCreate(36,8);
+  out_handshakeQ = xQueueCreate(36,7);
 
   //semaphore
 
@@ -374,8 +366,8 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     3,			/* Task priority */
     &candecode);	/* Pointer to store the task handle */
-    
   
+
   CAN_RegisterTX_ISR(CAN_TX_ISR);
  
   setCANFilter(0x123,0x7ff);
@@ -402,7 +394,7 @@ void setup() {
   256,      		/* Stack size in words, not bytes */
   NULL,			/* Parameter passed into the task */
   4,			/* Task priority */
-  &displayUpdateHandle );
+  &scanKeysHandle );
 
   TaskHandle_t canSend = NULL;
   xTaskCreate(
@@ -412,15 +404,6 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     1,			/* Task priority */
     &canSend );	/* Pointer to store the task handle */
-
-  TaskHandle_t handshakehandle = NULL;
-  xTaskCreate(
-    handshakeTask,		/* Function that implements the task */
-    "handshake",		/* Text name for the task */
-    64,      		/* Stack size in words, not bytes */
-    NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
-    &handshakehandle);	/* Pointer to store the task handle */
   //Timer setup
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
