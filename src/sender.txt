@@ -5,6 +5,7 @@
 #include <ES_CAN.h>
 // #define receiver
 
+// SENDER
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;

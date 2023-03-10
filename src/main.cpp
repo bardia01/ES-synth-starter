@@ -3,8 +3,8 @@
 #include <STM32FreeRTOS.h>
 #include <string.h>
 #include <ES_CAN.h>
-// #define receiver
-
+#define receiver
+// RECEIVER
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
@@ -86,7 +86,8 @@ const int32_t stepSizes [] = {50953930, 54077542, 57396381, 60715219, 64229283, 
 //[64299564.93684364, 68124038.08814545, 72174973.15141818, 76469940.44741818, 81077269.0013091, 85899345.92, 91006452.48651637]
 std::string keyMap[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 
-
+volatile uint8_t max_id;
+volatile uint8_t g_your_id;
 class Knob {
 
   public:
@@ -128,39 +129,69 @@ uint8_t RX_Message[8]={0};
 
 
 void sampleISR() {
-  // static int32_t phaseAcc[12] = {0};
-  // int32_t cVout = 0;
-  // for(int i=0; i<8;i++){
-  //   if((RX_Message[2] & (1<<i)) != 0){ 
-  //     if(RX_Message[1] > 4){
-  //       phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
-  //     }
-  //     else{
-  //       phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
-  //     }
-  //     Vout[i] = (phaseAcc[i] >> 24); 
-  //     Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-  //     cVout += Vout[i];
-  //   }
-  // }
+  static int32_t phaseAcc[12] = {0};
+  int32_t cVout = 0;
+  for(int i=0; i<8;i++){
+    if((RX_Message[2] & (1<<i)) != 0){ 
+      if(RX_Message[1] > 4){
+        phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+      }
+      else{
+        phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+      }
+      Vout[i] = (phaseAcc[i] >> 24); 
+      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+      cVout += Vout[i];
+    }
+  }
 
-  // for(int i=0; i<4;i++){
-  //   if((RX_Message[3] & (1<<i)) != 0){ 
-  //     if(RX_Message[1] > 4){
-  //       phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
-  //     }
-  //     else{
-  //       phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
-  //     }
-  //     Vout[i+8] = (phaseAcc[i+8] >> 24); 
-  //     Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-  //     cVout += Vout[i+8];
-  //   }
-  // }
+  for(int i=0; i<4;i++){
+    if((RX_Message[3] & (1<<i)) != 0){ 
+      if(RX_Message[1] > 4){
+        phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+      }
+      else{
+        phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+      }
+      Vout[i+8] = (phaseAcc[i+8] >> 24); 
+      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+      cVout += Vout[i+8];
+    }
+  }
 
-  // cVout = max(-128, min(127, (int)cVout));
-  // frund = cVout;
-  // analogWrite(OUTR_PIN, (cVout + 128));
+  // Now add the receivers own keys
+  for(int i=0; i<8;i++){
+    if((g_keys_pressed_p1 & (1<<i)) != 0){ 
+      if(knob2.knobrotation > 4){
+        phaseAcc[i] += stepSizes[i] << (knob2.knobrotation - 4);
+      }
+      else{
+        phaseAcc[i] += stepSizes[i] >> (4 - knob2.knobrotation);
+      }
+      Vout[i] = (phaseAcc[i] >> 24); 
+      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+      cVout += Vout[i];
+    }
+  }
+
+  for(int i=0; i<4;i++){
+    if((g_keys_pressed_p2 & (1<<i)) != 0){ 
+      if(knob2.knobrotation > 4){
+        phaseAcc[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4);
+      }
+      else{
+        phaseAcc[i+8] += stepSizes[i+8] >> (4 - knob2.knobrotation);
+      }
+      Vout[i+8] = (phaseAcc[i+8] >> 24); 
+      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+      cVout += Vout[i+8];
+    }
+  }
+  
+
+  cVout = max(-128, min(127, (int)cVout));
+  frund = cVout;
+  analogWrite(OUTR_PIN, (cVout + 128));
 }
 
 volatile bool press = 0;
@@ -170,7 +201,7 @@ void writetx(uint8_t totx[]){
   totx[1] = knob2.knobrotation;
   totx[2] = press?g_keys_pressed_p1:totx[2];
   totx[3] = press?g_keys_pressed_p2:totx[3];
-  // totx[4] = my_octave;
+  totx[4] = g_your_id;
 }
 
 
@@ -231,13 +262,23 @@ void displayUpdateTask(void * pvParameters){
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
-    
+    #ifdef receiver
+    while (CAN_CheckRXLevel())
+	    CAN_RX(ID, RX_Message);
+    #endif
     xSemaphoreGive(rxmsgMutex);
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
     
     u8g2.setCursor(2,30);
     u8g2.print(MY_ID, DEC);
+    #ifdef receiver
+    u8g2.setCursor(15,30);
+    u8g2.print(max_id, DEC);
+    
+    u8g2.setCursor(30,30);
+    u8g2.drawStr(30,30, "RX");
+    #endif
     u8g2.setCursor(2,20);
     u8g2.print(keyArray[0],HEX);
     u8g2.setCursor(22,20);
@@ -253,9 +294,7 @@ void displayUpdateTask(void * pvParameters){
     u8g2.print(knob2.knobrotation,DEC);
     xSemaphoreGive(keyArrayMutex);
     u8g2.setCursor(66,30);
-    // u8g2.print((char) RX_Message[0]);
-    u8g2.print(RX_Message[1]);
-    u8g2.print(RX_Message[2]);
+    u8g2.print(RX_Message[0], DEC);
     
     u8g2.sendBuffer();          // transfer internal memory to the display
     
@@ -278,41 +317,39 @@ void CANSendTask(void * pvParameters){
 uint8_t keyboard_ids[4] = {0};
 uint8_t keyboard_octs[4] = {0};
 
-
+uint8_t gen_keyboard_id(){
+    uint8_t id = 0;
+    return max_id = max_id + 1;
+}
 void CANDecodeTask(void * pvParameters){
   uint8_t localRX_Message[8];
-  uint8_t l_my_id;
+  uint8_t l_your_id = 0;
   while(1){
-    xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
-    xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
-
-    if((localRX_Message[0] == 8) && MY_ID == 0){ // this message was from the receiver
-      MY_ID = localRX_Message[4];
+   xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
+   xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
+   if(localRX_Message[0] == 0){
+        l_your_id = gen_keyboard_id();
+        __atomic_store(&g_your_id, &l_your_id, __ATOMIC_RELAXED);
     }
     memcpy(RX_Message, localRX_Message, sizeof RX_Message);
-
     // Assign keyboard ids
-   
     xSemaphoreGive(rxmsgMutex);
   }
+  max_id = max_id + l_your_id;
 }
 
-
+#ifdef receiver
   void CAN_RX_ISR (void) {
     uint8_t RX_Message_ISR[8];
     uint32_t ID;
     CAN_RX(ID, RX_Message_ISR);
     xQueueSendFromISR(msgInQ,RX_Message_ISR, NULL);
   }
-  
+#endif
 
 void CAN_TX_ISR (void) {
 	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
 }
-
-
-
-
 
 void setup() {
   // put your setup code here, to run once:
@@ -322,6 +359,7 @@ void setup() {
   //semaphore
 
   CAN_Init(false);
+  #ifdef receiver
   CAN_RegisterRX_ISR(CAN_RX_ISR);
   TaskHandle_t candecode = NULL;
   xTaskCreate(
@@ -331,7 +369,7 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     1,			/* Task priority */
     &candecode);	/* Pointer to store the task handle */
-  
+  #endif
 
   CAN_RegisterTX_ISR(CAN_TX_ISR);
  

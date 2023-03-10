@@ -4,7 +4,7 @@
 #include <string.h>
 #include <ES_CAN.h>
 #define receiver
-
+// RECEIVER
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
@@ -242,8 +242,13 @@ void displayUpdateTask(void * pvParameters){
     
     u8g2.setCursor(2,30);
     u8g2.print(MY_ID, DEC);
-    u8g2.setCursor(15,30);
-    u8g2.print(max_id, DEC);
+    #ifdef receiver
+      u8g2.setCursor(15,30);
+      u8g2.print(max_id, DEC);
+      
+      u8g2.setCursor(30,30);
+      u8g2.drawStr(30,30, "RX");
+    #endif
     u8g2.setCursor(2,20);
     u8g2.print(keyArray[0],HEX);
     u8g2.setCursor(22,20);
