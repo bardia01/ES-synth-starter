@@ -133,13 +133,15 @@ uint32_t ID;
 uint8_t RX_Message[8]={0};
 
 volatile bool octave_up = false;
-
+uint8_t g_count=10;
 void sampleISR() {
-  static int32_t phaseAcc[12] = {0};
+  uint8_t count = 0;
+  static uint32_t phaseAcc[12] = {0};
   int32_t cVout = 0;
   if(RX_Message[4] > 3){
     for(int i=0; i<8;i++){
-      if((RX_Message[2] & (1<<i)) != 0){ 
+      if((RX_Message[2] & (1<<i)) != 0){
+        count++;
         if(RX_Message[1] > 4){
           phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
         }
@@ -152,7 +154,8 @@ void sampleISR() {
       }
     }
     for(int i=0; i<4;i++){
-      if((RX_Message[3] & (1<<i)) != 0){ 
+      if((RX_Message[3] & (1<<i)) != 0){
+        count++; 
         if(RX_Message[1] > 4){
           phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
         }
@@ -168,6 +171,7 @@ void sampleISR() {
   else{
     for(int i=0; i<8;i++){
       if((RX_Message[2] & (1<<i)) != 0){ 
+        count++; 
         if(RX_Message[1] > 4){
           phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
         }
@@ -175,7 +179,7 @@ void sampleISR() {
           phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
         }
 
-        uint32_t d = (phaseAcc[i] >> 22);
+        int32_t d = (phaseAcc[i] >> 22);
         
         //make table 1024, 
         Vout[i] = (sinwave[d]); 
@@ -184,14 +188,15 @@ void sampleISR() {
       }
     }
     for(int i=0; i<4;i++){
-      if((RX_Message[3] & (1<<i)) != 0){ 
+      if((RX_Message[3] & (1<<i)) != 0){
+        count++; 
         if(RX_Message[1] > 4){
           phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
         }
         else{
           phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
         }
-        uint32_t d = (phaseAcc[i+8] >> 22);
+        int32_t d = (phaseAcc[i+8] >> 22);
 
         Vout[i+8] = (sinwave[d]); 
         Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
@@ -199,6 +204,9 @@ void sampleISR() {
       }
     }
   }
+  
+  cVout = (float)cVout / (float)count;
+  g_count = count;
   cVout = max(-128, min(127, (int)cVout));
   frund = cVout;
   analogWrite(OUTR_PIN, (cVout + 128));
@@ -465,9 +473,10 @@ void loop() {
   // put your main code here, to run repeatedly:
   // static uint32_t next = millis();
   // static uint32_t count = 0;
+
   // Serial.println(RX_Message[2]);
   // Serial.println(cVout, DEC);
-  // Serial.println(sinwave[0]);
+  Serial.println(g_count);
   // if (millis() > next) {
 
   //   //Serial.println(dog);
