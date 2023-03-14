@@ -62,6 +62,8 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       delayMicroseconds(2);
       digitalWrite(REN_PIN,LOW);
 }
+uint8_t thirdkeyboard = 0;
+uint8_t secondkeyboard = 0;
 
 //Lab 1 section 1, reading a single row of the key matrix
 volatile int32_t currentStepSize;
@@ -136,8 +138,8 @@ void sampleISR() {
   static int32_t phaseAccR[12] = {0};
   int32_t cVout = 0;
   for(int i=0; i<8;i++){
-    if((RX_Message[2] & (1<<i)) != 0){ 
-      if(RX_Message[1] > 4){
+    if((thirdkeyboard & (1<<i)) != 0){ 
+      if(1){
         phaseAccS[i] += stepSizes[i] << (RX_Message[1] - 4);
       }
       else{
@@ -149,19 +151,47 @@ void sampleISR() {
     }
   }
 
-  for(int i=0; i<4;i++){
-    if((RX_Message[3] & (1<<i)) != 0){ 
-      if(RX_Message[1] > 4){
-        phaseAccS[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+  for(int i=0; i<8;i++){
+    if((secondkeyboard & (1<<i)) != 0){ 
+      if(1){
+        phaseAccS[i] += stepSizes[i] << (RX_Message[1] - 4);
       }
       else{
-        phaseAccS[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+        phaseAccS[i] += stepSizes[i] >> (4 - RX_Message[1]);
       }
-      Vout[i+8] = (phaseAccS[i+8] >> 24); 
-      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-      cVout += Vout[i+8];
+      Vout[i] = (phaseAccS[i] >> 24); 
+      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+      cVout += Vout[i];
     }
   }
+
+  // for(int i=0; i<8;i++){
+  //   if((RX_Message[2] & (1<<i)) != 0){ 
+  //     if(RX_Message[1] > 4){
+  //       phaseAccS[i] += stepSizes[i] << (RX_Message[1] - 4);
+  //     }
+  //     else{
+  //       phaseAccS[i] += stepSizes[i] >> (4 - RX_Message[1]);
+  //     }
+  //     Vout[i] = (phaseAccS[i] >> 24); 
+  //     Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+  //     cVout += Vout[i];
+  //   }
+  // }
+
+  // for(int i=0; i<4;i++){
+  //   if((RX_Message[3] & (1<<i)) != 0){ 
+  //     if(RX_Message[1] > 4){
+  //       phaseAccS[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+  //     }
+  //     else{
+  //       phaseAccS[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+  //     }
+  //     Vout[i+8] = (phaseAccS[i+8] >> 24); 
+  //     Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+  //     cVout += Vout[i+8];
+  //   }
+  // }
 
   for(int i=0; i<8;i++){
     if((g_keys_pressed_p1 & (1<<i)) != 0){ 
@@ -208,7 +238,17 @@ void writetx(uint8_t totx[]){
 }
 
 bool g_outBits[7] = {true, true, true, true, true, true, true};
+bool tmp_outBits[7] = {true, true, true, true, true, true, true};
 
+
+void handshaketask(void * pvParameters) {
+  const TickType_t xFrequency = 800/portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  while(1){
+    vTaskDelayUntil( &xLastWakeTime, xFrequency );
+    memcpy(g_outBits, tmp_outBits, sizeof(g_outBits));
+  }
+}
 void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -354,9 +394,14 @@ void CANDecodeTask(void * pvParameters){
       l_myPos = max((int)g_myPos, localRX_Message[4] + 1);
       bool l_outBits[7] = {true, true, true, true, true, false, false};
       __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
-      memcpy(g_outBits, l_outBits, sizeof l_outBits);
+      memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
     }
-
+    if(localRX_Message[0] == 5){
+      __atomic_store_n(&thirdkeyboard, localRX_Message[2], __ATOMIC_RELAXED);
+    }
+    else{
+      __atomic_store_n(&secondkeyboard, localRX_Message[2], __ATOMIC_RELAXED);
+    }
     memcpy(RX_Message, localRX_Message, sizeof RX_Message);
     // Assign keyboard ids
     xSemaphoreGive(rxmsgMutex);
@@ -397,7 +442,7 @@ void setup() {
     "CANDecode",		/* Text name for the task */
     64,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
+    2,			/* Task priority */
     &candecode);	/* Pointer to store the task handle */
   #endif
 
@@ -420,13 +465,22 @@ void setup() {
   1,			/* Task priority */
   &scanKeysHandle );	/* Pointer to store the task handle */
 
+  TaskHandle_t handshakehandle = NULL;
+  xTaskCreate(
+  handshaketask,		/* Function that implements the task */
+  "handshake",		/* Text name for the task */
+  64,      		/* Stack size in words, not bytes */
+  NULL,			/* Parameter passed into the task */
+  5,			/* Task priority */
+  &handshakehandle);
+
   TaskHandle_t displayUpdateHandle = NULL;
   xTaskCreate(
   displayUpdateTask,		/* Function that implements the task */
   "displayUpdate",		/* Text name for the task */
   256,      		/* Stack size in words, not bytes */
   NULL,			/* Parameter passed into the task */
-  2,			/* Task priority */
+  4,			/* Task priority */
   &scanKeysHandle );
 
   TaskHandle_t canSend = NULL;
@@ -435,7 +489,7 @@ void setup() {
     "CANSend",		/* Text name for the task */
     64,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
+    3,			/* Task priority */
     &canSend );	/* Pointer to store the task handle */
   //Timer setup
   TIM_TypeDef *Instance = TIM1;
