@@ -1,69 +1,69 @@
-void sampleISR() {
-  count=0;
-  static int32_t phaseAccS[36] = {0};
-  static int32_t phaseAccR[12] = {0};
-  int32_t cVout = 0;
+if(knob1.knobrotation > 3){
     for(int i=0; i<8;i++){
-    if((loctave_1 & (1<<i)) != 0){
-      count++; 
-      if(knob2.knobrotation > 4){
-        phaseAccS[i] += stepSizes[i] << (knob2.knobrotation - 4);
+      if((loctave_1 & (1<<i)) != 0){
+        count++;
+        if(knob2.knobrotation > 4){
+          phaseAcc[i] += stepSizes[i] << (knob2.knobrotation - 4 - 1);
+        }
+        else{
+          phaseAcc[i] += stepSizes[i] >> (1 + 4 - knob2.knobrotation);
+        }
+        Vout[i] = (phaseAcc[i] >> 24); 
+        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+        cVout += Vout[i];
       }
-      else{
-        phaseAccS[i] += stepSizes[i] >> (1 + 4 - knob2.knobrotation);
+    }
+    for(int i=0; i<4;i++){
+      if((loctave_2 & (1<<i)) != 0){
+        count++; 
+        if(knob2.knobrotation > 4){
+          phaseAcc[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 - 1);
+        }
+        else{
+          phaseAcc[i+8] += stepSizes[i+8] >> (1 + 4 - knob2.knobrotation);
+        }
+        Vout[i+8] = (phaseAcc[i+8] >> 24); 
+        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+        cVout += Vout[i+8];
       }
-      Vout[i] = (phaseAccS[i] >> 24); 
-      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-      cVout += Vout[i];
     }
   }
-  for(int i=0; i<4;i++){
-    if((loctave_2 & (1<<i)) != 0){ 
-      count++;
-      if(knob2.knobrotation > 4){
-        phaseAccS[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4);
+  else{
+    for(int i=0; i<8;i++){
+      if((uoctave_1 & (1<<i)) != 0){ 
+        count++; 
+        if(knob2.knobrotation > 4){
+          phaseAcc[i] += stepSizes[i] << (knob2.knobrotation - 4 + 1);
+        }
+        else{
+          phaseAcc[i] += stepSizes[i] >> (-1 + 4 - knob2.knobrotation);
+        }
+
+        int32_t d = (phaseAcc[i] >> 22);
+        
+        //make table 1024, 
+        Vout[i] = (sinwave[d]); 
+        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+        cVout += Vout[i];
       }
-      else{
-        phaseAccS[i+8] += stepSizes[i+8] >> (4 - knob2.knobrotation);
-      }
-      Vout[i+8] = (phaseAccS[i+8] >> 24); 
-      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-      cVout += Vout[i+8];
     }
-  }
+    for(int i=0; i<4;i++){
+      if((uoctave_2 & (1<<i)) != 0){
+        count++; 
+        if(knob2.knobrotation > 4){
+          phaseAcc[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + 1);
+        }
+        else{
+          phaseAcc[i+8] += stepSizes[i+8] >> (-1 + 4 - knob2.knobrotation);
+        }
+        int32_t d = (phaseAcc[i+8] >> 22);
 
-  for(int i=0; i<8;i++){
-    if((uoctave_1 & (1<<i)) != 0){ 
-      count++;
-      if(knob2.knobrotation > 4){
-        phaseAccS[i] += stepSizes[i] << (knob2.knobrotation - 4);
+        Vout[i+8] = (sinwave[d]); 
+        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+        cVout += Vout[i+8];
       }
-      else{
-        phaseAccS[i] += stepSizes[i] >> (4 - knob2.knobrotation);
-      }
-      Vout[i] = (phaseAccS[i] >> 24); 
-      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-      cVout += Vout[i];
     }
-  }
-
-  for(int i=0; i<4;i++){
-    if((uoctave_2 & (1<<i)) != 0){
-      count++;
-      if(knob2.knobrotation > 4){
-        phaseAccS[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4);
-      }
-      else{
-        phaseAccS[i+8] += stepSizes[i+8] >> (4 - knob2.knobrotation);
-      }
-      Vout[i+8] = (phaseAccS[i+8] >> 24); 
-      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-      cVout += Vout[i+8];
-    }
-  }
-
-
-  for(int i=0; i<8;i++){
+    for(int i=0; i<8;i++){
     if((g_keys_pressed_p1 & (1<<i)) != 0){ 
       count++;
       if(knob2.knobrotation > 4){
@@ -77,7 +77,6 @@ void sampleISR() {
       cVout += Vout[i];
     }
   }
-
   for(int i=0; i<4;i++){
     if((g_keys_pressed_p2 & (1<<i)) != 0){ 
       count++;
@@ -93,7 +92,4 @@ void sampleISR() {
     }
   }
 
-  cVout = max(-128, min(127, (int)(cVout/count)));
-  frund = cVout;
-  analogWrite(OUTR_PIN, (cVout + 128));
-}
+  }

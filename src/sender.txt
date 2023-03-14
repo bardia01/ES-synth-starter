@@ -462,11 +462,6 @@ void setup() {
 
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  // static uint32_t next = millis();
-  // static uint32_t count = 0;
-  // Serial.println(RX_Message[2]);
-  //Serial.println(g_msgOut[2], BIN);
   //Serial.println(g_msgOut[3], BIN);
   Serial.println(RX_Message[4], DEC);
   // if (millis() > next) {

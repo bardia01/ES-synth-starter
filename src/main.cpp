@@ -68,6 +68,18 @@ uint8_t loctave_2 = 0;
 uint8_t uoctave_1 = 0;
 uint8_t uoctave_2 = 0;
 
+volatile int8_t sinwave [1024];
+
+void gensin(){
+  float step = 2*3.14159265358979323846 / 1024;
+  float phase = 0;
+  for(uint32_t i = 0; i<1024; i++){
+    //Serial.println(sin(phase));
+    sinwave[i] = (int)(127.0*sin(phase));
+    //Serial.println(sinwave[i]);
+    phase += step;
+  }
+}
 
 //Lab 1 section 1, reading a single row of the key matrix
 volatile int32_t currentStepSize;
@@ -121,6 +133,7 @@ class Knob {
 
 Knob knob3(8, 0);
 Knob knob2(8, 0);
+Knob knob1(8,0);
 
 uint8_t g_keys_pressed_p1;
 uint8_t g_keys_pressed_p2;
@@ -129,7 +142,11 @@ uint8_t g_HSEast = 0;
 uint8_t g_HSWest = 0;
 
 int32_t cVout = 0;
-int32_t Vout[36] = {0};
+int32_t RVout[12] = {0};
+int32_t LVout[12] = {0};
+int32_t UVout[12] = {0};
+
+
 
 // Add a local variable to store last cvout then print that
 int32_t frund = 0;
@@ -140,69 +157,69 @@ uint16_t count=0;
 
 void sampleISR() {
   count=0;
-  static int32_t phaseAccS[36] = {0};
+  static int32_t phaseAccLO[12] = {0};
+  static int32_t phaseAccUO[12] = {0};
   static int32_t phaseAccR[12] = {0};
   int32_t cVout = 0;
-    for(int i=0; i<8;i++){
+  // LOWER OCTAVE
+  for(int i=0; i<8;i++){
     if((loctave_1 & (1<<i)) != 0){
       count++; 
       if(knob2.knobrotation - 1 > 4){
-        phaseAccS[i] += stepSizes[i] << (knob2.knobrotation - 4 - 1);
+        phaseAccLO[i] += stepSizes[i] << (knob2.knobrotation - 4 - 1);
       }
       else{
-        phaseAccS[i] += stepSizes[i] >> (1 + 4 - knob2.knobrotation);
+        phaseAccLO[i] += stepSizes[i] >> (1 + 4 - knob2.knobrotation);
       }
-      Vout[i] = (phaseAccS[i] >> 24); 
-      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-      cVout += Vout[i];
+      LVout[i] = (phaseAccLO[i] >> 24); 
+      LVout[i] = LVout[i] >> (8 - knob3.knobrotation);
+      cVout += LVout[i];
     }
   }
   for(int i=0; i<4;i++){
     if((loctave_2 & (1<<i)) != 0){ 
       count++;
       if(knob2.knobrotation - 1 > 4){
-        phaseAccS[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 - 1);
+        phaseAccLO[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 - 1);
       }
       else{
-        phaseAccS[i+8] += stepSizes[i+8] >> (1 + 4 - knob2.knobrotation);
+        phaseAccLO[i+8] += stepSizes[i+8] >> (1 + 4 - knob2.knobrotation);
       }
-      Vout[i+8] = (phaseAccS[i+8] >> 24); 
-      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-      cVout += Vout[i+8];
+      LVout[i+8] = (phaseAccLO[i+8] >> 24); 
+      LVout[i+8] = LVout[i+8] >> (8 - knob3.knobrotation);
+      cVout += LVout[i+8];
     }
   }
-
+ // UPPER OCTAVE
   for(int i=0; i<8;i++){
     if((uoctave_1 & (1<<i)) != 0){ 
       count++;
       if(knob2.knobrotation + 1 > 4){
-        phaseAccS[i] += stepSizes[i] << (knob2.knobrotation - 4 + 1);
+        phaseAccUO[i] += stepSizes[i] << (knob2.knobrotation - 4 + 1);
       }
       else{
-        phaseAccS[i] += stepSizes[i] >> (-1 + 4 - knob2.knobrotation);
+        phaseAccUO[i] += stepSizes[i] >> (-1 + 4 - knob2.knobrotation);
       }
-      Vout[i] = (phaseAccS[i] >> 24); 
-      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-      cVout += Vout[i];
+      UVout[i] = (phaseAccUO[i] >> 24); 
+      UVout[i] = UVout[i] >> (8 - knob3.knobrotation);
+      cVout += UVout[i];
     }
   }
-
   for(int i=0; i<4;i++){
     if((uoctave_2 & (1<<i)) != 0){
       count++;
       if(knob2.knobrotation + 1 > 4){
-        phaseAccS[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + 1);
+        phaseAccUO[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + 1);
       }
       else{
-        phaseAccS[i+8] += stepSizes[i+8] >> (-1 + 4 - knob2.knobrotation);
+        phaseAccUO[i+8] += stepSizes[i+8] >> (-1 + 4 - knob2.knobrotation);
       }
-      Vout[i+8] = (phaseAccS[i+8] >> 24); 
-      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-      cVout += Vout[i+8];
+      UVout[i+8] = (phaseAccLO[i+8] >> 24); 
+      UVout[i+8] = UVout[i+8] >> (8 - knob3.knobrotation);
+      cVout += UVout[i+8];
     }
   }
-
-
+  // MIDDLE OCTAVE
   for(int i=0; i<8;i++){
     if((g_keys_pressed_p1 & (1<<i)) != 0){ 
       count++;
@@ -212,12 +229,11 @@ void sampleISR() {
       else{
         phaseAccR[i] += stepSizes[i] >> (4 - knob2.knobrotation);
       }
-      Vout[i] = (phaseAccR[i] >> 24); 
-      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-      cVout += Vout[i];
+      RVout[i] = (phaseAccR[i] >> 24); 
+      RVout[i] = RVout[i] >> (8 - knob3.knobrotation);
+      cVout += RVout[i];
     }
   }
-
   for(int i=0; i<4;i++){
     if((g_keys_pressed_p2 & (1<<i)) != 0){ 
       count++;
@@ -227,11 +243,12 @@ void sampleISR() {
       else{
         phaseAccR[i+8] += stepSizes[i+8] >> (4 - knob2.knobrotation);
       }
-      Vout[i+8] = (phaseAccR[i+8] >> 24); 
-      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-      cVout += Vout[i+8];
+      RVout[i+8] = (phaseAccR[i+8] >> 24); 
+      RVout[i+8] = RVout[i+8] >> (8 - knob3.knobrotation);
+      cVout += RVout[i+8];
     }
   }
+
 
   cVout = max(-128, min(127, (int)(cVout/count)));
   frund = cVout;
@@ -264,7 +281,7 @@ void handshaketask(void * pvParameters) {
 void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
-  static int8_t an3,an2 =0;
+  static int8_t an3,an2,an1 =0;
   uint8_t TX_Message[8] = {0};
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
@@ -309,9 +326,11 @@ void scanKeysTask(void * pvParameters) {
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
       knob3.getValue(an3);
       knob2.getValue(an2);
+      knob1.getValue(an1);
       xSemaphoreGive(keyArrayMutex);
       an3 = ((keyArrayCopy[3]) & 0x03);
       an2 = (((keyArrayCopy[3]) & 0x0C) >> 2);
+      an1 = ((keyArrayCopy[4])& 0x03);
 
       uint8_t l_HSEast = (((keyArrayCopy[6]) & 0x08) >> 3);
       uint8_t l_HSWest = (((keyArrayCopy[5]) & 0x08) >> 3);
@@ -336,14 +355,11 @@ void displayUpdateTask(void * pvParameters){
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
     
-    u8g2.setCursor(100,2);
+    u8g2.setCursor(90,2);
+    u8g2.drawStr(30,30, "Pos:");
     u8g2.print(g_myPos, DEC);
     #ifdef receiver
-      // u8g2.setCursor(15,30);
-      // u8g2.print(max_id, DEC);
-      
-      u8g2.setCursor(30,30);
-      u8g2.drawStr(30,30, "RX");
+    u8g2.drawStr(30,30, "RX ");
     #endif
     u8g2.setCursor(2,20);
     u8g2.print(keyArray[0],HEX);
@@ -352,18 +368,14 @@ void displayUpdateTask(void * pvParameters){
     u8g2.setCursor(42,20);
     u8g2.print(keyArray[2],HEX);
 
-    u8g2.setCursor(62,20);
-    xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-    
+    u8g2.setCursor(92,20);
     u8g2.print(knob3.knobrotation,DEC);
-    u8g2.setCursor(82,20);
+    u8g2.setCursor(72,20);
     u8g2.print(knob2.knobrotation,DEC);
-    xSemaphoreGive(keyArrayMutex);
+    u8g2.setCursor(52,20);
+    u8g2.print(knob1.knobrotation,DEC);
     u8g2.setCursor(66,30);
     u8g2.println(frund, DEC);
-    // // u8g2.print((char) RX_Message[0]);
-    // u8g2.print(RX_Message[1]);
-    // u8g2.print(RX_Message[2]);
     
     u8g2.sendBuffer();          // transfer internal memory to the display
     
@@ -539,6 +551,7 @@ void setup() {
   //Initialise UART
   Serial.begin(9600);
   Serial.println("Hello World");
+  gensin();
 
   vTaskStartScheduler();
 }
