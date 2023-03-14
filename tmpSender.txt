@@ -21,7 +21,7 @@ SemaphoreHandle_t CAN_TX_Semaphore;
   const uint32_t interval = 100; //Display update interval
   QueueHandle_t msgInQ;
   QueueHandle_t msgOutQ;
-  QueueHandle_t out_handshakeQ;
+  //QueueHandle_t out_handshakeQ;
 
 //Pin definitions
   //Row select and enable
@@ -194,11 +194,11 @@ void scanKeysTask(void * pvParameters) {
     uint32_t localCurrentStepSize = 0;
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     //Access keyArray here
-    uint8_t out_handshake[7];
-    xQueueReceive(out_handshakeQ, out_handshake, portMAX_DELAY);
+    //uint8_t out_handshake[7];
+    //xQueueReceive(out_handshakeQ, out_handshake, portMAX_DELAY);
     for(uint8_t i = 0; i < 7; i++){
       setRow(i);
-      digitalWrite(OUT_PIN,out_handshake[i]); //Set value to latch in DFF
+      digitalWrite(OUT_PIN,g_outBits[i]); //Set value to latch in DFF
       digitalWrite(REN_PIN,1);   
       delayMicroseconds(3);
       keyArray[i] = readCols();
@@ -314,8 +314,8 @@ void CANDecodeTask(void * pvParameters){
      
         l_myPos = max((int)g_myPos, localRX_Message[4] + 1);
         bool l_outBits[7] = {true, true, true, true, true, false, false};
-        //memcpy(g_outBits, l_outBits, sizeof l_outBits);
-          xQueueSend(out_handshakeQ, l_outBits, portMAX_DELAY);
+        memcpy(g_outBits, l_outBits, sizeof l_outBits);
+          //xQueueSend(out_handshakeQ, l_outBits, portMAX_DELAY);
         __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
 
     }
@@ -351,7 +351,7 @@ void setup() {
   //initialise queue
   msgInQ = xQueueCreate(36,8);
   msgOutQ = xQueueCreate(36,8);
-  out_handshakeQ = xQueueCreate(36,7);
+  //out_handshakeQ = xQueueCreate(36,7);
 
   //semaphore
 
