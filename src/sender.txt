@@ -184,7 +184,7 @@ bool g_outBits[7] = {true, true, true, true, true, true, true};
 bool tmp_outBits[7] = {true, true, true, true, true, true, true};
 
 void handshaketask(void * pvParameters) {
-  const TickType_t xFrequency = 1000/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );

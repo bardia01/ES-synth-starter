@@ -62,8 +62,12 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       delayMicroseconds(2);
       digitalWrite(REN_PIN,LOW);
 }
-uint8_t thirdkeyboard = 0;
-uint8_t secondkeyboard = 0;
+uint8_t loctave_1 = 0;
+uint8_t loctave_2 = 0;
+
+uint8_t uoctave_1 = 0;
+uint8_t uoctave_2 = 0;
+
 
 //Lab 1 section 1, reading a single row of the key matrix
 volatile int32_t currentStepSize;
@@ -125,25 +129,57 @@ uint8_t g_HSEast = 0;
 uint8_t g_HSWest = 0;
 
 int32_t cVout = 0;
-int32_t Vout[12] = {0};
+int32_t Vout[36] = {0};
 
 // Add a local variable to store last cvout then print that
 int32_t frund = 0;
 uint32_t ID;
 uint8_t RX_Message[8]={0};
 
+uint16_t count=0;
 
 void sampleISR() {
-  static int32_t phaseAccS[12] = {0};
+  count=0;
+  static int32_t phaseAccS[36] = {0};
   static int32_t phaseAccR[12] = {0};
   int32_t cVout = 0;
-  for(int i=0; i<8;i++){
-    if((thirdkeyboard & (1<<i)) != 0){ 
-      if(1){
-        phaseAccS[i] += stepSizes[i] << (RX_Message[1] - 4);
+    for(int i=0; i<8;i++){
+    if((loctave_1 & (1<<i)) != 0){
+      count++; 
+      if(knob2.knobrotation - 1 > 4){
+        phaseAccS[i] += stepSizes[i] << (knob2.knobrotation - 4 - 1);
       }
       else{
-        phaseAccS[i] += stepSizes[i] >> (4 - RX_Message[1]);
+        phaseAccS[i] += stepSizes[i] >> (1 + 4 - knob2.knobrotation);
+      }
+      Vout[i] = (phaseAccS[i] >> 24); 
+      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+      cVout += Vout[i];
+    }
+  }
+  for(int i=0; i<4;i++){
+    if((loctave_2 & (1<<i)) != 0){ 
+      count++;
+      if(knob2.knobrotation - 1 > 4){
+        phaseAccS[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 - 1);
+      }
+      else{
+        phaseAccS[i+8] += stepSizes[i+8] >> (1 + 4 - knob2.knobrotation);
+      }
+      Vout[i+8] = (phaseAccS[i+8] >> 24); 
+      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+      cVout += Vout[i+8];
+    }
+  }
+
+  for(int i=0; i<8;i++){
+    if((uoctave_1 & (1<<i)) != 0){ 
+      count++;
+      if(knob2.knobrotation + 1 > 4){
+        phaseAccS[i] += stepSizes[i] << (knob2.knobrotation - 4 + 1);
+      }
+      else{
+        phaseAccS[i] += stepSizes[i] >> (-1 + 4 - knob2.knobrotation);
       }
       Vout[i] = (phaseAccS[i] >> 24); 
       Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
@@ -151,50 +187,25 @@ void sampleISR() {
     }
   }
 
-  for(int i=0; i<8;i++){
-    if((secondkeyboard & (1<<i)) != 0){ 
-      if(1){
-        phaseAccS[i] += stepSizes[i] << (RX_Message[1] - 4);
+  for(int i=0; i<4;i++){
+    if((uoctave_2 & (1<<i)) != 0){
+      count++;
+      if(knob2.knobrotation + 1 > 4){
+        phaseAccS[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + 1);
       }
       else{
-        phaseAccS[i] += stepSizes[i] >> (4 - RX_Message[1]);
+        phaseAccS[i+8] += stepSizes[i+8] >> (-1 + 4 - knob2.knobrotation);
       }
-      Vout[i] = (phaseAccS[i] >> 24); 
-      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-      cVout += Vout[i];
+      Vout[i+8] = (phaseAccS[i+8] >> 24); 
+      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+      cVout += Vout[i+8];
     }
   }
 
-  // for(int i=0; i<8;i++){
-  //   if((RX_Message[2] & (1<<i)) != 0){ 
-  //     if(RX_Message[1] > 4){
-  //       phaseAccS[i] += stepSizes[i] << (RX_Message[1] - 4);
-  //     }
-  //     else{
-  //       phaseAccS[i] += stepSizes[i] >> (4 - RX_Message[1]);
-  //     }
-  //     Vout[i] = (phaseAccS[i] >> 24); 
-  //     Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-  //     cVout += Vout[i];
-  //   }
-  // }
-
-  // for(int i=0; i<4;i++){
-  //   if((RX_Message[3] & (1<<i)) != 0){ 
-  //     if(RX_Message[1] > 4){
-  //       phaseAccS[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
-  //     }
-  //     else{
-  //       phaseAccS[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
-  //     }
-  //     Vout[i+8] = (phaseAccS[i+8] >> 24); 
-  //     Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-  //     cVout += Vout[i+8];
-  //   }
-  // }
 
   for(int i=0; i<8;i++){
     if((g_keys_pressed_p1 & (1<<i)) != 0){ 
+      count++;
       if(knob2.knobrotation > 4){
         phaseAccR[i] += stepSizes[i] << (knob2.knobrotation - 4);
       }
@@ -209,6 +220,7 @@ void sampleISR() {
 
   for(int i=0; i<4;i++){
     if((g_keys_pressed_p2 & (1<<i)) != 0){ 
+      count++;
       if(knob2.knobrotation > 4){
         phaseAccR[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4);
       }
@@ -221,7 +233,7 @@ void sampleISR() {
     }
   }
 
-  cVout = max(-128, min(127, (int)cVout));
+  cVout = max(-128, min(127, (int)(cVout/count)));
   frund = cVout;
   analogWrite(OUTR_PIN, (cVout + 128));
 }
@@ -242,7 +254,7 @@ bool tmp_outBits[7] = {true, true, true, true, true, true, true};
 
 
 void handshaketask(void * pvParameters) {
-  const TickType_t xFrequency = 800/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
@@ -324,7 +336,7 @@ void displayUpdateTask(void * pvParameters){
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
     
-    u8g2.setCursor(2,30);
+    u8g2.setCursor(100,2);
     u8g2.print(g_myPos, DEC);
     #ifdef receiver
       // u8g2.setCursor(15,30);
@@ -348,9 +360,10 @@ void displayUpdateTask(void * pvParameters){
     u8g2.print(knob2.knobrotation,DEC);
     xSemaphoreGive(keyArrayMutex);
     u8g2.setCursor(66,30);
-    // u8g2.print((char) RX_Message[0]);
-    u8g2.print(RX_Message[1]);
-    u8g2.print(RX_Message[2]);
+    u8g2.println(frund, DEC);
+    // // u8g2.print((char) RX_Message[0]);
+    // u8g2.print(RX_Message[1]);
+    // u8g2.print(RX_Message[2]);
     
     u8g2.sendBuffer();          // transfer internal memory to the display
     
@@ -396,11 +409,13 @@ void CANDecodeTask(void * pvParameters){
       __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
       memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
     }
-    if(localRX_Message[0] == 5){
-      __atomic_store_n(&thirdkeyboard, localRX_Message[2], __ATOMIC_RELAXED);
+    if(localRX_Message[4] < g_myPos){
+      __atomic_store_n(&loctave_1, localRX_Message[2], __ATOMIC_RELAXED);
+      __atomic_store_n(&loctave_2, localRX_Message[3], __ATOMIC_RELAXED);
     }
     else{
-      __atomic_store_n(&secondkeyboard, localRX_Message[2], __ATOMIC_RELAXED);
+      __atomic_store_n(&uoctave_1, localRX_Message[2], __ATOMIC_RELAXED);
+      __atomic_store_n(&uoctave_2, localRX_Message[3], __ATOMIC_RELAXED);
     }
     memcpy(RX_Message, localRX_Message, sizeof RX_Message);
     // Assign keyboard ids
