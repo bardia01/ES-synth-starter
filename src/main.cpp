@@ -129,7 +129,7 @@ uint8_t RX_Message[8]={0};
 
 
 void sampleISR() {
-  static int32_t phaseAcc[12] = {0};
+  static uint32_t phaseAcc[12] = {0};
   int32_t cVout = 0;
   for(int i=0; i<8;i++){
     if((RX_Message[2] & (1<<i)) != 0){ 
@@ -139,7 +139,7 @@ void sampleISR() {
       else{
         phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
       }
-      Vout[i] = (phaseAcc[i] >> 24); 
+      Vout[i] = (phaseAcc[i] >> 26); 
       Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
       cVout += Vout[i];
     }
@@ -153,7 +153,7 @@ void sampleISR() {
       else{
         phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
       }
-      Vout[i+8] = (phaseAcc[i+8] >> 24); 
+      Vout[i+8] = (phaseAcc[i+8] >> 26); 
       Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
       cVout += Vout[i+8];
     }
@@ -168,7 +168,7 @@ void sampleISR() {
       else{
         phaseAcc[i] += stepSizes[i] >> (4 - knob2.knobrotation);
       }
-      Vout[i] = (phaseAcc[i] >> 24); 
+      Vout[i] = (phaseAcc[i] >> 26); 
       Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
       cVout += Vout[i];
     }
@@ -182,7 +182,7 @@ void sampleISR() {
       else{
         phaseAcc[i+8] += stepSizes[i+8] >> (4 - knob2.knobrotation);
       }
-      Vout[i+8] = (phaseAcc[i+8] >> 24); 
+      Vout[i+8] = (phaseAcc[i+8] >> 26); 
       Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
       cVout += Vout[i+8];
     }
@@ -358,7 +358,7 @@ void setup() {
   msgOutQ = xQueueCreate(36,8);
   //semaphore
 
-  CAN_Init(false);
+  CAN_Init(true);
   #ifdef receiver
   CAN_RegisterRX_ISR(CAN_RX_ISR);
   TaskHandle_t candecode = NULL;
