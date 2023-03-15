@@ -224,6 +224,7 @@ void scanKeysTask(void * pvParameters) {
         {
           if(!(keyArrayCopy[i] & (1 << j)))
           { 
+            localCurrentStepSize = i*4 + j;
             press = 1;
             keys_pressed_copy |= (1 << (i*4 + j));
           }
@@ -237,7 +238,7 @@ void scanKeysTask(void * pvParameters) {
 
       writetx(TX_Message);
       
-      //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+      __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       // u8g2.sendBuffer();          // transfer internal memory to the display
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
       knob3.getValue(an3);
@@ -265,26 +266,23 @@ void displayUpdateTask(void * pvParameters){
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
     
-    u8g2.setCursor(2,30);
+    u8g2.drawStr(95,10, "Pos:");
+    u8g2.setCursor(120,10);
     u8g2.print(g_myPos, DEC);
-    u8g2.setCursor(2,20);
-    u8g2.print(keyArray[0],HEX);
-    u8g2.setCursor(22,20);
-    u8g2.print(keyArray[1],HEX); 
-    u8g2.setCursor(42,20);
-    u8g2.print(keyArray[2],HEX);
-
-    u8g2.setCursor(62,20);
+    #ifndef receiver
+      u8g2.drawStr(92,30, "SNDR");
+    #endif
+    u8g2.drawStr(5,10, "Note:");
+    if(g_keys_pressed_p1 || g_keys_pressed_p2 ) u8g2.drawStr(40,10,keyMap[currentStepSize].c_str());
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-    
-    u8g2.print(knob3.knobrotation,DEC);
-    u8g2.setCursor(82,20);
-    u8g2.print(knob2.knobrotation,DEC);
+    u8g2.drawStr(5,20, "Volume:");
+    u8g2.setCursor(60,20);
+    u8g2.print(knob3.knobrotation,DEC); 
+    u8g2.drawStr(5,30, "Octave:");
+    u8g2.setCursor(50,30);
+    u8g2.print(knob2.knobrotation,DEC); 
     xSemaphoreGive(keyArrayMutex);
-    u8g2.setCursor(66,30);
-    // u8g2.print((char) RX_Message[0]);
-    u8g2.print(RX_Message[1]);
-    u8g2.print(RX_Message[2]);
+
     
     u8g2.sendBuffer();          // transfer internal memory to the display
     
