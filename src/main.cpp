@@ -6,9 +6,12 @@
 #include <ES_CAN.h>
 #include <sinwave.h>
 
+#define SAMPLE_BUFFER_SIZE 128
+
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
+SemaphoreHandle_t sampleBufferSemaphore;
 
 //Constants
   const uint32_t interval = 100; //Display update interval
@@ -131,155 +134,25 @@ int32_t frund = 0;
 uint32_t ID;
 uint8_t RX_Message[8]={0};
 
+uint8_t sampleBuffer0[SAMPLE_BUFFER_SIZE];
+uint8_t sampleBuffer1[SAMPLE_BUFFER_SIZE];
+volatile bool writeBuffer1 = false;
+
 volatile bool octave_up = false;
 uint8_t g_count=10;
+volatile bool sinsound = 0;
+
 void sampleISR() {
-  uint8_t count = 0;
-  static uint32_t phaseAcc[12] = {0};
-  int32_t cVout = 0;
-  if(RX_Message[4] == 8){
-    //sawtooth
-    for(int i=0; i<8;i++){
-      if((RX_Message[2] & (1<<i)) != 0){
-        count++;
-        if(RX_Message[1] > 4){
-          phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
-        }
-        else{
-          phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
-        }
-        Vout[i] = (phaseAcc[i] >> 24) - 128; 
-        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-        cVout += Vout[i];
-      }
-    }
-    for(int i=0; i<4;i++){
-      if((RX_Message[3] & (1<<i)) != 0){
-        count++; 
-        if(RX_Message[1] > 4){
-          phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
-        }
-        else{
-          phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
-        }
-        Vout[i+8] = (phaseAcc[i+8] >> 24) - 128; 
-        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-        cVout += Vout[i+8];
-      }
-    }
+  static uint32_t readCtr = 0;
+    if (readCtr == SAMPLE_BUFFER_SIZE){
+    readCtr = 0;
+    writeBuffer1 = !writeBuffer1;
+    xSemaphoreGiveFromISR(sampleBufferSemaphore, NULL);
   }
-  else if(RX_Message[4] ==7){
-    // square wave
-    for(int i=0; i<8;i++){
-      if((RX_Message[2] & (1<<i)) != 0){
-        count++;
-        if(RX_Message[1] > 4){
-          phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
-        }
-        else{
-          phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
-        }
-
-        int32_t d = (phaseAcc[i] >> 24) -128;
-        Vout[i] = (d > 0) ? 127 : -128; 
-        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-        cVout += Vout[i];
-      }
-    }
-    for(int i=0; i<4;i++){
-      if((RX_Message[3] & (1<<i)) != 0){
-        count++; 
-        if(RX_Message[1] > 4){
-          phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
-        }
-        else{
-          phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
-        }
-        int32_t d = (phaseAcc[i+8] >> 24) -128;
-        Vout[i+8] = (d > 0) ? 127 : -128; 
-        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-        cVout += Vout[i+8];
-      }
-    }
-  }
-  else if(RX_Message[4] == 6){
-    //sinwave
-    for(int i=0; i<8;i++){
-      if((RX_Message[2] & (1<<i)) != 0){ 
-        count++; 
-        if(RX_Message[1] > 4){
-          phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
-        }
-        else{
-          phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
-        }
-
-        int32_t d = (phaseAcc[i] >> 22);
-        
-        //make table 1024, 
-        Vout[i] = (sinwave[d]); 
-        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-        cVout += Vout[i];
-      }
-    }
-    for(int i=0; i<4;i++){
-      if((RX_Message[3] & (1<<i)) != 0){
-        count++; 
-        if(RX_Message[1] > 4){
-          phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
-        }
-        else{
-          phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
-        }
-        int32_t d = (phaseAcc[i+8] >> 22);
-
-        Vout[i+8] = (sinwave[d]); 
-        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-        cVout += Vout[i+8];
-      }
-    }
-  }
-  else if(RX_Message[4] == 5){
-    //triangle wave
-    for(int i=0; i<8;i++){
-      if((RX_Message[2] & (1<<i)) != 0){ 
-        count++; 
-        if(RX_Message[1] > 4){
-          phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
-        }
-        else{
-          phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
-        }
-
-        int32_t d = (phaseAcc[i] >> 24) - 128;
-        Vout[i] = (d < 0) ? (d << 1) + 127 : 127 - (d << 1);  
-        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
-        cVout += Vout[i];
-      }
-    }
-    for(int i=0; i<4;i++){
-      if((RX_Message[3] & (1<<i)) != 0){
-        count++; 
-        if(RX_Message[1] > 4){
-          phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
-        }
-        else{
-          phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
-        }
-
-        int32_t d = (phaseAcc[i+8] >> 24) - 128;
-        Vout[i+8] = (d < 0) ? (d << 1) + 127 : 127 - (d << 1);  
-        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
-        cVout += Vout[i+8];
-      }
-    }
-  }
-  
-  cVout = (float)cVout / (float)count;
-  g_count = count;
-  cVout = max(-128, min(127, (int)cVout));
-  frund = g_count;
-  analogWrite(OUTR_PIN, (cVout + 128));
+  if (writeBuffer1)
+    analogWrite(OUTR_PIN, sampleBuffer0[readCtr++]);
+  else
+    analogWrite(OUTR_PIN, sampleBuffer1[readCtr++]);
 }
 
 volatile bool press = 0;
@@ -409,6 +282,221 @@ void CANSendTask(void * pvParameters){
 	}
 }
 
+void sampleBufferTask(void* pvParameters){
+  uint32_t phaseAcc[12] = {0};
+  while(1){
+	xSemaphoreTake(sampleBufferSemaphore, portMAX_DELAY);
+	for (uint32_t writeCtr = 0; writeCtr < SAMPLE_BUFFER_SIZE; writeCtr++) {
+    uint8_t count = 0;
+    // static uint32_t phaseAcc[12] = {0};
+    int32_t cVout = 0;
+    // uint8_t RX_Message[8]={0};
+    // xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
+    // memcpy(RX_Message, RX_Message, 8);
+    // xSemaphoreGive(rxmsgMutex);
+    if(RX_Message[4] == 8){
+      //sawtooth
+      //time to try lfo sine wave modulation ting
+      
+      for(int i=0; i<8;i++){
+        // uint32_t tmp = phaseAcc[i];
+        if((RX_Message[2] & (1<<i)) != 0){
+          count++;
+          if(RX_Message[1] > 4){
+            phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+          }
+          else{
+            phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+          }
+          // uint32_t phasechange = phaseAcc[i] - tmp;
+
+          Vout[i] = (phaseAcc[i] >> 24) - 128; 
+          Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+          if(sinsound){
+            float tmp = lfo[phaseAcc[i] >> 20];
+            tmp = tmp / 128.0;
+            cVout += Vout[i] * tmp;
+          }
+          else
+            cVout += Vout[i];
+        }
+      }
+      for(int i=0; i<4;i++){
+        if((RX_Message[3] & (1<<i)) != 0){
+          count++; 
+          if(RX_Message[1] > 4){
+            phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+          }
+          else{
+            phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+          }
+          Vout[i+8] = (phaseAcc[i+8] >> 24) - 128; 
+          Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+          if(sinsound){
+            float tmp = lfo[phaseAcc[i+8] >> 20];
+            tmp = tmp / 128.0;
+            cVout += Vout[i+8] * tmp;
+          }
+          else
+            cVout += Vout[i+8];
+        }
+      }
+    }
+    else if(RX_Message[4] ==7){
+      // square wave
+      for(int i=0; i<8;i++){
+        if((RX_Message[2] & (1<<i)) != 0){
+          count++;
+          if(RX_Message[1] > 4){
+            phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+          }
+          else{
+            phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+          }
+
+          int32_t d = (phaseAcc[i] >> 24) -128;
+          Vout[i] = (d > 0) ? 127 : -128; 
+          Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+          if(sinsound){
+            float tmp = lfo[phaseAcc[i] >> 20];
+            tmp = tmp / 128.0;
+            cVout += Vout[i] * tmp;
+          }
+          else
+            cVout += Vout[i];
+          
+        }
+      }
+      for(int i=0; i<4;i++){
+        if((RX_Message[3] & (1<<i)) != 0){
+          count++; 
+          if(RX_Message[1] > 4){
+            phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+          }
+          else{
+            phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+          }
+          int32_t d = (phaseAcc[i+8] >> 24) -128;
+          Vout[i+8] = (d > 0) ? 127 : -128; 
+          Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+          if(sinsound){
+            float tmp = lfo[phaseAcc[i+8] >> 20];
+            tmp = tmp / 128.0;
+            cVout += Vout[i+8] * tmp;
+          }
+          else
+            cVout += Vout[i+8];
+        }
+      }
+    }
+    else if(RX_Message[4] ==6){
+      //sinwave
+      for(int i=0; i<8;i++){
+        if((RX_Message[2] & (1<<i)) != 0){ 
+          count++; 
+          if(RX_Message[1] > 4){
+            phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+          }
+          else{
+            phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+          }
+
+          int32_t d = (phaseAcc[i] >> 22);
+          
+          
+          Vout[i] = (sinwave[d]); 
+          Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+          if(sinsound){
+            float tmp = lfo[phaseAcc[i] >> 20];
+            tmp = tmp / 128.0;
+            cVout += Vout[i] * tmp;
+          }
+          else
+            cVout += Vout[i];
+        }
+      }
+      for(int i=0; i<4;i++){
+        if((RX_Message[3] & (1<<i)) != 0){
+          count++; 
+          if(RX_Message[1] > 4){
+            phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+          }
+          else{
+            phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+          }
+          int32_t d = (phaseAcc[i+8] >> 22);
+
+          Vout[i+8] = (sinwave[d]); 
+          Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+          if(sinsound){
+            float tmp = lfo[phaseAcc[i+8] >> 20];
+            tmp = tmp / 128.0;
+            cVout += Vout[i+8] * tmp;
+          }
+          else
+            cVout += Vout[i+8];
+        }
+      }
+    }
+    else if(RX_Message[4] ==5){
+      //triangle wave
+      for(int i=0; i<8;i++){
+        if((RX_Message[2] & (1<<i)) != 0){ 
+          count++; 
+          if(RX_Message[1] > 4){
+            phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+          }
+          else{
+            phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+          }
+
+          int32_t d = (phaseAcc[i] >> 24) - 128;
+          Vout[i] = (d < 0) ? (d << 1) + 127 : 127 - (d << 1);  
+          Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+          if(sinsound){
+            float tmp = lfo[phaseAcc[i] >> 20];
+            tmp = tmp / 128.0;
+            cVout += Vout[i] * tmp;
+          }
+          else
+            cVout += Vout[i];
+        }
+      }
+      for(int i=0; i<4;i++){
+        if((RX_Message[3] & (1<<i)) != 0){
+          count++; 
+          if(RX_Message[1] > 4){
+            phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+          }
+          else{
+            phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+          }
+
+          int32_t d = (phaseAcc[i+8] >> 24) - 128;
+          Vout[i+8] = (d < 0) ? (d << 1) + 127 : 127 - (d << 1);  
+          Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+          if(sinsound){
+            float tmp = lfo[phaseAcc[i+8] >> 20];
+            tmp = tmp / 128.0;
+            cVout += Vout[i+8] * tmp;
+          }
+          else
+            cVout += Vout[i+8];
+        }
+      }
+    }
+    cVout = (float)cVout / (float)count;
+    g_count = count;
+    cVout = max(-128, min(127, (int)cVout));
+    frund = RX_Message[4];
+		if (writeBuffer1)
+			sampleBuffer1[writeCtr] = cVout + 128;
+		else
+			sampleBuffer0[writeCtr] = cVout + 128;
+	}
+}
+}
+
 void CANDecodeTask(void * pvParameters){ 
   bool local_octave_up;;
   uint32_t localCurrentStepSize = 0;
@@ -447,11 +535,11 @@ void CAN_RX_ISR (void) {
 	xQueueSendFromISR(msgInQ, RX_Message_ISR, NULL);
 }
 
-
-
 void setup() {
   // put your setup code here, to run once:
   //initialise queue
+  sampleBufferSemaphore = xSemaphoreCreateBinary();
+  xSemaphoreGive(sampleBufferSemaphore);
   msgInQ = xQueueCreate(36,8);
   msgOutQ = xQueueCreate(36,8);
   //semaphore
@@ -472,7 +560,7 @@ void setup() {
   "scanKeys",		/* Text name for the task */
   64,      		/* Stack size in words, not bytes */
   NULL,			/* Parameter passed into the task */
-  1,			/* Task priority */
+  6,			/* Task priority */
   &scanKeysHandle );	/* Pointer to store the task handle */
 
   TaskHandle_t displayUpdateHandle = NULL;
@@ -490,7 +578,7 @@ void setup() {
     "CANDecode",		/* Text name for the task */
     64,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
+    4,			/* Task priority */
     &candecode );	/* Pointer to store the task handle */
 
   TaskHandle_t canSend = NULL;
@@ -499,8 +587,18 @@ void setup() {
     "CANSend",		/* Text name for the task */
     64,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
+    3,			/* Task priority */
     &canSend );	/* Pointer to store the task handle */
+
+  TaskHandle_t sampleBuffer = NULL;
+  xTaskCreate(
+    sampleBufferTask,		/* Function that implements the tsask */
+    "sampleBuffer",		/* Text name for the task */
+    256,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    10,			/* Task priority */
+    &sampleBuffer );	/* Pointer to store the task handle */
+
   //Timer setup
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
