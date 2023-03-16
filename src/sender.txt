@@ -9,6 +9,7 @@
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
+SemaphoreHandle_t ghandshakeMutex;
 
 #ifndef receiver
   uint8_t MY_ID = 0; 
@@ -123,9 +124,11 @@ uint8_t g_keys_pressed_p2;
 
 uint8_t g_HSEast = 0;
 uint8_t g_HSWest = 0;
-uint8_t g_myPos = 0;
+uint8_t g_myPos = 1;
 int8_t g_myOct = 0;
 int8_t g_myVol = 0;
+uint8_t g_isThree = 0;
+uint8_t g_isTwo = 0;
 
 int32_t cVout = 0;
 int32_t Vout[12] = {0};
@@ -181,6 +184,8 @@ void writetx(uint8_t totx[]){
   totx[3] = press?g_keys_pressed_p2:totx[3];
   totx[4] = g_myPos;
   totx[5] = knob3.knobrotation;
+  totx[6] = g_isThree;
+  totx[7] = g_isTwo;
 }
 
 bool g_outBits[7] = {true, true, true, true, true, true, true};
@@ -254,7 +259,7 @@ void scanKeysTask(void * pvParameters) {
       uint8_t l_HSWest = (((keyArrayCopy[5]) & 0x08) >> 3);
       __atomic_store(&g_HSEast, &l_HSEast, __ATOMIC_RELAXED);
       __atomic_store(&g_HSWest, &l_HSWest, __ATOMIC_RELAXED);
-
+      
       xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
   }
 }
@@ -315,26 +320,65 @@ void CANDecodeTask(void * pvParameters){
   uint8_t l_myPos;
   int8_t l_myOct;
   int8_t l_myVol;
+  uint8_t l_isThree;
+  uint8_t l_isTwo;
   while(1){
     xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
 
+    xSemaphoreTake(ghandshakeMutex, portMAX_DELAY);
+    bool cond1 = (g_HSWest == 1) && (g_HSEast == 0);
+    bool cond2 = (g_HSEast ==0) && (g_HSWest == 0);
+    bool cond3 = (g_HSEast == 1) && (g_HSWest ==0);
+    uint8_t prev_isThree = g_isThree;
+    uint8_t prev_isTwo = g_isTwo;
+    uint8_t prev_myPos = g_myPos;
+    xSemaphoreGive(ghandshakeMutex);
+
     if((localRX_Message[0] == 8) && MY_ID == 0){ // this message was from the receiver
-      int posDif = g_myPos - localRX_Message[4];
+      int posDif = prev_myPos - localRX_Message[4];
       l_myOct = localRX_Message[1] + posDif;
       l_myVol = localRX_Message[5];
       __atomic_store(&g_myOct, &l_myOct, __ATOMIC_RELAXED);
       __atomic_store(&g_myVol, &l_myVol, __ATOMIC_RELAXED);
     }
 
-    if(g_HSWest == 1 && g_myPos == 0){
-     
-        l_myPos = max((int)g_myPos, localRX_Message[4] + 1);
-        bool l_outBits[7] = {true, true, true, true, true, false, false};
-        memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
-          //xQueueSend(out_handshakeQ, l_outBits, portMAX_DELAY);
+    if(cond1){ 
+      l_myPos = 1;//max((int)g_myPos, localRX_Message[4] + 1);
+      //bool l_outBits[7] = {true, true, true, true, true, false, false};
+      if(prev_isThree == 1){
+        l_isThree = 0;
+        l_isTwo = 1;
+         __atomic_store(&g_isTwo, &l_isTwo, __ATOMIC_RELAXED);
+        __atomic_store(&g_isThree, &l_isThree, __ATOMIC_RELAXED);
+      }
+      __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
+      //memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
+    }
+    else if(cond2){
+      l_myPos = 2;
+      l_isThree = 1;
+      if(prev_isTwo ==1){
+        l_isTwo = 0;
+        __atomic_store(&g_isTwo, &l_isTwo, __ATOMIC_RELAXED);
+      }
+      __atomic_store(&g_isThree, &l_isThree, __ATOMIC_RELAXED);
+      __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
+      //bool l_outBits[7] = {true, true, true, true, true, true, false};
+      //memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
+    }
+    else if(cond3){
+        l_myPos = max((int)prev_myPos, 2);
+        if(localRX_Message[6] == 1) l_myPos = 3;
+        if(localRX_Message[7] == 1) l_myPos = 2;
+        if(prev_isThree == 1){
+          l_myPos = 2;
+          l_isThree = 0;
+          __atomic_store(&g_isThree, &l_isThree, __ATOMIC_RELAXED);
+        }
         __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
-
+        //bool l_outBits[7] = {true, true, true, true, true, true, true};
+        //memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
     }
 
 
@@ -393,6 +437,7 @@ void setup() {
   keyArrayMutex = xSemaphoreCreateMutex();
   rxmsgMutex = xSemaphoreCreateMutex();
   CAN_TX_Semaphore = xSemaphoreCreateCounting(3,3);
+  ghandshakeMutex = xSemaphoreCreateMutex();
   //initialise the RTOS scheduler
   TaskHandle_t scanKeysHandle = NULL;
 
@@ -470,7 +515,7 @@ void setup() {
 
 void loop() {
   //Serial.println(g_msgOut[3], BIN);
-  Serial.println(RX_Message[4], DEC);
+  Serial.println(g_isThree, DEC);
   // if (millis() > next) {
 
   //   //Serial.println(dog);
