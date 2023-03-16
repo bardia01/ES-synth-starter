@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include <ES_CAN.h>
+#include <sinewave.h>
 
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
@@ -44,18 +45,18 @@ SemaphoreHandle_t CAN_TX_Semaphore;
 //Display driver object
 U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
 
-volatile int8_t sinwave [1024];
+volatile int8_t sinwave [1024] = sinarray;
 
-void gensin(){
-  float step = 2*3.14159265358979323846 / 1024;
-  float phase = 0;
-  for(uint32_t i = 0; i<1024; i++){
-    //Serial.println(sin(phase));
-    sinwave[i] = (int)(127.0*sin(phase));
-    //Serial.println(sinwave[i]);
-    phase += step;
-  }
-}
+// void gensin(){
+//   float step = 2*3.14159265358979323846 / 1024;
+//   float phase = 0;
+//   for(uint32_t i = 0; i<1024; i++){
+//     //Serial.println(sin(phase));
+//     sinwave[i] = (int)(127.0*sin(phase));
+//     //Serial.println(sinwave[i]);
+//     phase += step;
+//   }
+// }
 
 //Function to set outputs using key matrix
 void setOutMuxBit(const uint8_t bitIdx, const bool value) {
@@ -535,7 +536,7 @@ void setup() {
   //Initialise UART
   Serial.begin(9600);
   Serial.println("Hello World");
-  gensin();
+  //gensin();
   vTaskStartScheduler();
 }
 
