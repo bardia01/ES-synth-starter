@@ -138,7 +138,8 @@ void sampleISR() {
   uint8_t count = 0;
   static uint32_t phaseAcc[12] = {0};
   int32_t cVout = 0;
-  if(RX_Message[4] > 3){
+  if(RX_Message[4] == 8){
+    //sawtooth
     for(int i=0; i<8;i++){
       if((RX_Message[2] & (1<<i)) != 0){
         count++;
@@ -148,7 +149,7 @@ void sampleISR() {
         else{
           phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
         }
-        Vout[i] = (phaseAcc[i] >> 24); 
+        Vout[i] = (phaseAcc[i] >> 24) - 128; 
         Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
         cVout += Vout[i];
       }
@@ -162,13 +163,48 @@ void sampleISR() {
         else{
           phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
         }
-        Vout[i+8] = (phaseAcc[i+8] >> 24); 
+        Vout[i+8] = (phaseAcc[i+8] >> 24) - 128; 
         Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
         cVout += Vout[i+8];
       }
     }
   }
-  else{
+  else if(RX_Message[4] ==7){
+    // square wave
+    for(int i=0; i<8;i++){
+      if((RX_Message[2] & (1<<i)) != 0){
+        count++;
+        if(RX_Message[1] > 4){
+          phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+        }
+        else{
+          phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+        }
+
+        int32_t d = (phaseAcc[i] >> 24) -128;
+        Vout[i] = (d > 0) ? 127 : -128; 
+        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+        cVout += Vout[i];
+      }
+    }
+    for(int i=0; i<4;i++){
+      if((RX_Message[3] & (1<<i)) != 0){
+        count++; 
+        if(RX_Message[1] > 4){
+          phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+        }
+        else{
+          phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+        }
+        int32_t d = (phaseAcc[i+8] >> 24) -128;
+        Vout[i+8] = (d > 0) ? 127 : -128; 
+        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+        cVout += Vout[i+8];
+      }
+    }
+  }
+  else if(RX_Message[4] == 6){
+    //sinwave
     for(int i=0; i<8;i++){
       if((RX_Message[2] & (1<<i)) != 0){ 
         count++; 
@@ -204,11 +240,46 @@ void sampleISR() {
       }
     }
   }
+  else if(RX_Message[4] == 5){
+    //triangle wave
+    for(int i=0; i<8;i++){
+      if((RX_Message[2] & (1<<i)) != 0){ 
+        count++; 
+        if(RX_Message[1] > 4){
+          phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+        }
+        else{
+          phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+        }
+
+        int32_t d = (phaseAcc[i] >> 24) - 128;
+        Vout[i] = (d < 0) ? (d << 1) + 127 : 127 - (d << 1);  
+        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+        cVout += Vout[i];
+      }
+    }
+    for(int i=0; i<4;i++){
+      if((RX_Message[3] & (1<<i)) != 0){
+        count++; 
+        if(RX_Message[1] > 4){
+          phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
+        }
+        else{
+          phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
+        }
+
+        int32_t d = (phaseAcc[i+8] >> 24) - 128;
+        Vout[i+8] = (d < 0) ? (d << 1) + 127 : 127 - (d << 1);  
+        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+        cVout += Vout[i+8];
+      }
+    }
+  }
   
   cVout = (float)cVout / (float)count;
   g_count = count;
   cVout = max(-128, min(127, (int)cVout));
-  frund = cVout;
+  frund = g_count;
   analogWrite(OUTR_PIN, (cVout + 128));
 }
 
