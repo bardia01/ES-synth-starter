@@ -4,7 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include <ES_CAN.h>
-#include <sinewave.h>
+#include <sinwave.h>
 
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
@@ -44,8 +44,6 @@ SemaphoreHandle_t CAN_TX_Semaphore;
 
 //Display driver object
 U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
-
-volatile int8_t sinwave [1024] = sinarray;
 
 // void gensin(){
 //   float step = 2*3.14159265358979323846 / 1024;
