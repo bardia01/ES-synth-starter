@@ -9,9 +9,13 @@ SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
 
+bool g_initial_handshake = false;
+
 #ifndef receiver
   uint8_t MY_ID = 0; 
 #endif
+
+#define HANDSHAKE_MSG_ID 255
 
 #ifdef receiver
   uint8_t MY_ID = 8;
@@ -258,8 +262,10 @@ void sampleISR() {
 volatile bool press = 0;
 uint8_t g_myPos = 0;
 
-void writetx(uint8_t totx[]){
-  totx[0] = MY_ID;
+void writetx(uint8_t totx[], bool is_handshake=0){
+  if(!is_handshake) totx[0] = MY_ID;
+  else totx[0] = HANDSHAKE_MSG_ID;
+  
   totx[1] = knob2.knobrotation;
   totx[2] = press?g_keys_pressed_p1:totx[2];
   totx[3] = press?g_keys_pressed_p2:totx[3];
@@ -271,12 +277,12 @@ bool tmp_outBits[7] = {true, true, true, true, true, true, true};
 
 
 void handshaketask(void * pvParameters) {
-  const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
-  TickType_t xLastWakeTime = xTaskGetTickCount();
-  while(1){
-    vTaskDelayUntil( &xLastWakeTime, xFrequency );
-    memcpy(g_outBits, tmp_outBits, sizeof(g_outBits));
-  }
+  // const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
+  // TickType_t xLastWakeTime = xTaskGetTickCount();
+  // while(1){
+  //   vTaskDelayUntil( &xLastWakeTime, xFrequency );
+  //   memcpy(g_outBits, tmp_outBits, sizeof(g_outBits));
+  // }
 }
 void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
@@ -354,9 +360,9 @@ void displayUpdateTask(void * pvParameters){
     xSemaphoreGive(rxmsgMutex);
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    
-    u8g2.setCursor(90,2);
-    u8g2.drawStr(30,30, "Pos:");
+  
+    // u8g2.drawStr(30,30, "Pos:");
+    u8g2.setCursor(2,30);
     u8g2.print(g_myPos, DEC);
     #ifdef receiver
     u8g2.drawStr(30,30, "RX ");
@@ -375,7 +381,7 @@ void displayUpdateTask(void * pvParameters){
     u8g2.setCursor(52,20);
     u8g2.print(knob1.knobrotation,DEC);
     u8g2.setCursor(66,30);
-    u8g2.println(frund, DEC);
+    // u8g2.println(frund, DEC);
     
     u8g2.sendBuffer();          // transfer internal memory to the display
     
@@ -408,19 +414,26 @@ void CANDecodeTask(void * pvParameters){
   while(1){
    xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
    xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
-  //  if(localRX_Message[0] == 0){
-  //       l_your_id = gen_keyboard_id();
-
-  //       //__atomic_store(&g_alone, &l_alone, __ATOMIC_RELAXED);
-  //       //__atomic_store(&g_your_id, &l_your_id, __ATOMIC_RELAXED);
-  //   }
-
-    if(g_HSWest == 1 && g_myPos ==0){
-      l_myPos = max((int)g_myPos, localRX_Message[4] + 1);
-      bool l_outBits[7] = {true, true, true, true, true, false, false};
-      __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
-      memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
+    if(localRX_Message[0] == HANDSHAKE_MSG_ID || g_initial_handshake){
+      if(g_HSWest == 1 && g_myPos ==0){
+        l_myPos = max((int)g_myPos, localRX_Message[4] + 1);
+        bool l_outBits[7] = {true, true, true, true, true, false, false};
+        __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
+        memcpy(g_outBits, l_outBits, sizeof l_outBits);
+        uint8_t handshake_msg[8] = {0};
+        writetx(handshake_msg, true);
+        g_initial_handshake = false;
+        for(uint8_t i = 0; i < 7; i++){
+          setRow(i);
+          digitalWrite(OUT_PIN,l_outBits[i]); //Set value to latch in DFF
+          digitalWrite(REN_PIN,1);   
+          digitalWrite(REN_PIN,0);     
+        }
+        xQueueSend(msgOutQ, handshake_msg, portMAX_DELAY);
+      }
     }
+    
+
     if(localRX_Message[4] < g_myPos){
       __atomic_store_n(&loctave_1, localRX_Message[2], __ATOMIC_RELAXED);
       __atomic_store_n(&loctave_2, localRX_Message[3], __ATOMIC_RELAXED);
@@ -449,10 +462,6 @@ void CAN_TX_ISR (void) {
 	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
 }
 
-
-
-
-
 void setup() {
   // put your setup code here, to run once:
   //initialise queue
@@ -469,7 +478,7 @@ void setup() {
     "CANDecode",		/* Text name for the task */
     64,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
-    2,			/* Task priority */
+    4,			/* Task priority */
     &candecode);	/* Pointer to store the task handle */
   #endif
 
@@ -489,17 +498,17 @@ void setup() {
   "scanKeys",		/* Text name for the task */
   64,      		/* Stack size in words, not bytes */
   NULL,			/* Parameter passed into the task */
-  1,			/* Task priority */
+  5,			/* Task priority */
   &scanKeysHandle );	/* Pointer to store the task handle */
 
-  TaskHandle_t handshakehandle = NULL;
-  xTaskCreate(
-  handshaketask,		/* Function that implements the task */
-  "handshake",		/* Text name for the task */
-  64,      		/* Stack size in words, not bytes */
-  NULL,			/* Parameter passed into the task */
-  5,			/* Task priority */
-  &handshakehandle);
+  // TaskHandle_t handshakehandle = NULL;
+  // xTaskCreate(
+  // handshaketask,		/* Function that implements the task */
+  // "handshake",		/* Text name for the task */
+  // 64,      		/* Stack size in words, not bytes */
+  // NULL,			/* Parameter passed into the task */
+  // 1,			/* Task priority */
+  // &handshakehandle);
 
   TaskHandle_t displayUpdateHandle = NULL;
   xTaskCreate(
@@ -507,7 +516,7 @@ void setup() {
   "displayUpdate",		/* Text name for the task */
   256,      		/* Stack size in words, not bytes */
   NULL,			/* Parameter passed into the task */
-  4,			/* Task priority */
+  2,			/* Task priority */
   &scanKeysHandle );
 
   TaskHandle_t canSend = NULL;
@@ -552,7 +561,7 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Hello World");
   gensin();
-
+  g_initial_handshake = true;
   vTaskStartScheduler();
 }
 
