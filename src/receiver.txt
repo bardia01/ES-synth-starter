@@ -70,11 +70,11 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       delayMicroseconds(2);
       digitalWrite(REN_PIN,LOW);
 }
-uint8_t loctave_1 = 0;
-uint8_t loctave_2 = 0;
+volatile uint8_t loctave_1 = 0;
+volatile uint8_t loctave_2 = 0;
 
-uint8_t uoctave_1 = 0;
-uint8_t uoctave_2 = 0;
+volatile uint8_t uoctave_1 = 0;
+volatile uint8_t uoctave_2 = 0;
 
 volatile int8_t sinwave [1024];
 
@@ -88,7 +88,7 @@ void gensin(){
 }
 
 //Lab 1 section 1, reading a single row of the key matrix
-volatile int32_t currentStepSize;
+volatile int32_t currentStepSize = 0;
 volatile uint8_t keyArray[7];
 uint8_t readCols() {
   uint8_t cols = 0;
@@ -220,7 +220,7 @@ void sampleISR() {
       else{
         phaseAccUO[i+8] += stepSizes[i+8] >> (-1 + 4 - knob2.knobrotation);
       }
-      UVout[i+8] = (phaseAccLO[i+8] >> 24); 
+      UVout[i+8] = (phaseAccUO[i+8] >> 24); 
       UVout[i+8] = UVout[i+8] >> (8 - knob3.knobrotation);
       cVout += UVout[i+8];
     }
@@ -267,8 +267,7 @@ uint8_t g_myPos = 0;
 void writetx(uint8_t totx[], bool is_handshake=0){
   if(!is_handshake) totx[0] = MY_ID;
   else totx[0] = HANDSHAKE_MSG_ID;
-  
-  totx[1] = knob2.knobrotation;
+  totx[1] = (knob2.knobrotation << 4) | knob3.knobrotation;
   totx[2] = press?g_keys_pressed_p1:totx[2];
   totx[3] = press?g_keys_pressed_p2:totx[3];
   totx[4] = g_myPos;
@@ -349,6 +348,7 @@ void scanKeysTask(void * pvParameters) {
         {
           if(!(keyArrayCopy[i] & (1 << j)))
           { 
+            localCurrentStepSize = (i*4 + j);
             press = 1;
             keys_pressed_copy |= (1 << (i*4 + j));
           }
@@ -362,7 +362,7 @@ void scanKeysTask(void * pvParameters) {
 
       writetx(TX_Message);
       
-      //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+      __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       // u8g2.sendBuffer();          // transfer internal memory to the display
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
       knob3.getValue(an3);
@@ -396,28 +396,21 @@ void displayUpdateTask(void * pvParameters){
     #endif
     xSemaphoreGive(rxmsgMutex);
   
-    // u8g2.drawStr(30,30, "Pos:");
-    u8g2.setCursor(2,30);
+    u8g2.drawStr(95,10, "Pos:");
+    u8g2.setCursor(120,10);
     u8g2.print(g_myPos, DEC);
     #ifdef receiver
-    u8g2.drawStr(30,30, "RX ");
+      u8g2.drawStr(92,30, "RCVR");
     #endif
-    u8g2.setCursor(2,20);
-    u8g2.print(keyArray[0],HEX);
-    u8g2.setCursor(22,20);
-    u8g2.print(keyArray[1],HEX); 
-    u8g2.setCursor(42,20);
-    u8g2.print(keyArray[2],HEX);
+    u8g2.drawStr(5,10, "Note:");
+    if(loctave_1 || loctave_2) u8g2.drawStr(40,10,keyMap[currentStepSize].c_str());
+    u8g2.drawStr(5,20, "Volume:");
+    u8g2.setCursor(60,20);
+    u8g2.print(knob3.knobrotation,DEC); 
+    u8g2.drawStr(5,30, "Octave:");
+    u8g2.setCursor(50,30);
+    u8g2.print(knob2.knobrotation,DEC); 
 
-    u8g2.setCursor(92,20);
-    u8g2.print(knob3.knobrotation,DEC);
-    u8g2.setCursor(72,20);
-    u8g2.print(knob2.knobrotation,DEC);
-    u8g2.setCursor(52,20);
-    u8g2.print(knob1.knobrotation,DEC);
-    u8g2.setCursor(66,30);
-    // u8g2.println(frund, DEC);
-    
     u8g2.sendBuffer();          // transfer internal memory to the display
     digitalToggle(LED_BUILTIN);
   }
@@ -462,7 +455,7 @@ void CANDecodeTask(void * pvParameters){
         __atomic_store_n(&uoctave_2, localRX_Message[3], __ATOMIC_RELAXED);
       }
     }
-    Serial.print(RX_Message[2]);
+    Serial.print(uoctave_2);
     xSemaphoreGive(handshakemutex);
     xSemaphoreGive(rxmsgMutex);
   }
