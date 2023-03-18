@@ -4,9 +4,8 @@
 #include <string.h>
 #include <ES_CAN.h>
 
+// COMMENT/UNCOMMENT TO UPLOAD SENDER/RECEIVER CODE
 #define receiver
-
-// RECEIVER
 
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
@@ -400,40 +399,52 @@ void scanKeysTask(void * pvParameters) {
       __atomic_store(&g_HSEast, &l_HSEast, __ATOMIC_RELAXED);
       __atomic_store(&g_HSWest, &l_HSWest, __ATOMIC_RELAXED);
 
-      if(g_myPos == 0){ xQueueSend(msgOutQ, TX_Message, 0);}
+      #ifdef receiver
+      if (g_myPos == 0){ xQueueSend(msgOutQ, TX_Message, 0);}
       else xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
+      #else 
+      xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
+      #endif
   }
 }
 void displayUpdateTask(void * pvParameters){
+  #ifdef receiver 
   const TickType_t xFrequency = 40/portTICK_PERIOD_MS;
+  #else
+  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+  #endif
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     u8g2.setFont(u8g2_font_ncenB08_tr);
     u8g2.clearBuffer();         // clear the internal memory
-    xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
     #ifdef receiver
+    xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
     while (CAN_CheckRXLevel())
 	    CAN_RX(ID, RX_Message);
-    #endif
     xSemaphoreGive(rxmsgMutex);
+    #endif
   
     u8g2.drawStr(95,10, "Pos:");
     u8g2.setCursor(120,10);
     u8g2.print(g_myPos, DEC);
-    #ifdef receiver
-      u8g2.drawStr(92,30, "RCVR");
-    #endif
+   
     u8g2.drawStr(5,10, "Note:");
+    #ifdef receiver
+    u8g2.drawStr(92,30, "RCVR");
     if(loctave_1 || loctave_2) u8g2.drawStr(40,10,keyMap[currentStepSize].c_str());
+    u8g2.setCursor(70,30);
+    u8g2.print(frund,DEC); 
+    #else
+    u8g2.drawStr(92,30, "SNDR");
+    if(g_keys_pressed_p1 || g_keys_pressed_p2 ) u8g2.drawStr(40,10,keyMap[currentStepSize].c_str());
+    #endif
     u8g2.drawStr(5,20, "Volume:");
     u8g2.setCursor(60,20);
     u8g2.print(knob3.knobrotation,DEC); 
     u8g2.drawStr(5,30, "Octave:");
     u8g2.setCursor(50,30);
     u8g2.print(knob2.knobrotation,DEC); 
-    u8g2.setCursor(70,30);
-    u8g2.print(frund,DEC); 
 
     u8g2.sendBuffer();          // transfer internal memory to the display
     digitalToggle(LED_BUILTIN);
@@ -441,6 +452,7 @@ void displayUpdateTask(void * pvParameters){
 }
 
 uint8_t g_msgOut[8];
+
 void CANSendTask(void * pvParameters){
   uint8_t msgOut[8];
 	while (1) {
@@ -453,15 +465,19 @@ void CANSendTask(void * pvParameters){
 }
 
 
-
-
 void CANDecodeTask(void * pvParameters){
   uint8_t localRX_Message[8];
   uint8_t l_my_id;
+  #ifdef receiver
   const TickType_t xFrequency = 30/portTICK_PERIOD_MS;
+  #else
+  const TickType_t xFrequency = 40/portTICK_PERIOD_MS;
+  #endif
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
-    // vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    #ifndef receiver
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    #endif
     xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
     xSemaphoreTake(handshakemutex, portMAX_DELAY);
     if(localRX_Message[0] == HANDSHAKE_MSG_ID){
@@ -469,6 +485,7 @@ void CANDecodeTask(void * pvParameters){
       g_handshake_received = true;
     }
     else{
+      #ifdef receiver
       memcpy(RX_Message, localRX_Message, sizeof RX_Message);
       if(localRX_Message[4] == 2){
         __atomic_store_n(&g_keys_pressed_p1, localRX_Message[2], __ATOMIC_RELAXED);
@@ -478,22 +495,23 @@ void CANDecodeTask(void * pvParameters){
         __atomic_store_n(&uoctave_1, localRX_Message[2], __ATOMIC_RELAXED);
         __atomic_store_n(&uoctave_2, localRX_Message[3], __ATOMIC_RELAXED);
       }
+      #else
+      memcpy((void*)RX_Message, localRX_Message, sizeof RX_Message);
+      #endif
     }
-    Serial.print(uoctave_2);
+    //Serial.print(uoctave_2);
     xSemaphoreGive(handshakemutex);
     xSemaphoreGive(rxmsgMutex);
   }
 }
 
 
-#ifdef receiver
-  void CAN_RX_ISR (void) {
-    uint8_t RX_Message_ISR[8];
-    uint32_t ID;
-    CAN_RX(ID, RX_Message_ISR);
-    xQueueSendFromISR(msgInQ,RX_Message_ISR, NULL);
-  }
-#endif
+void CAN_RX_ISR (void) {
+  uint8_t RX_Message_ISR[8];
+  uint32_t ID;
+  CAN_RX(ID, RX_Message_ISR);
+  xQueueSendFromISR(msgInQ,RX_Message_ISR, NULL);
+}
 
 void CAN_TX_ISR (void) {
 	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
@@ -505,31 +523,44 @@ void setup() {
   msgInQ = xQueueCreate(36,8);
   msgOutQ = xQueueCreate(36,8);
   //semaphore
-
+  
   CAN_Init(false);
   CAN_RegisterRX_ISR(CAN_RX_ISR);
+
   TaskHandle_t candecode = NULL;
+  //candecode task
+  #ifdef receiver
   xTaskCreate(
   CANDecodeTask,		/* Function that implements the task */
   "CANDecode",		/* Text name for the task */
   256,      		/* Stack size in words, not bytes */
   NULL,			/* Parameter passed into the task */
-  2,			/* Task priority */
+  2, 	/* Task priority */
   &candecode);	/* Pointer to store the task handle */
+  #else
+  xTaskCreate(
+  CANDecodeTask,		/* Function that implements the task */
+  "CANDecode",		/* Text name for the task */
+  256,      		/* Stack size in words, not bytes */
+  NULL,			/* Parameter passed into the task */
+  1,			/* Task priority */
+  &candecode);	/* Pointer to store the task handle */
+  #endif
+
 
   CAN_RegisterTX_ISR(CAN_TX_ISR);
- 
   setCANFilter(0x123,0x7ff);
-
   CAN_Start();
   keyArrayMutex = xSemaphoreCreateMutex();
   rxmsgMutex = xSemaphoreCreateMutex();
   handshakemutex = xSemaphoreCreateMutex();
-
   CAN_TX_Semaphore = xSemaphoreCreateCounting(3,3);
-  //initialise the RTOS scheduler
-  TaskHandle_t scanKeysHandle = NULL;
 
+  //initialise the RTOS scheduler
+
+  TaskHandle_t scanKeysHandle = NULL;
+  //scankeys task
+  #ifdef receiver
   xTaskCreate(
   scanKeysTask,		/* Function that implements the task */
   "scanKeys",		/* Text name for the task */
@@ -537,6 +568,15 @@ void setup() {
   NULL,			/* Parameter passed into the task */
   1,			/* Task priority */
   &scanKeysHandle );	/* Pointer to store the task handle */
+  #else
+  xTaskCreate(
+  scanKeysTask,		/* Function that implements the task */
+  "scanKeys",		/* Text name for the task */
+  64,      		/* Stack size in words, not bytes */
+  NULL,			/* Parameter passed into the task */
+  2,			/* Task priority */
+  &scanKeysHandle );	/* Pointer to store the task handle */
+  #endif
 
   TaskHandle_t handshakehandle = NULL;
   xTaskCreate(
@@ -564,12 +604,15 @@ void setup() {
   NULL,			/* Parameter passed into the task */
   1,			/* Task priority */
   &canSend );	/* Pointer to store the task handle */
+
   //Timer setup
+  #ifdef receiver
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
   sampleTimer->setOverflow(22000, HERTZ_FORMAT);
   sampleTimer->attachInterrupt(sampleISR);
   sampleTimer->resume();
+  #endif
   //Set pin directions
   pinMode(RA0_PIN, OUTPUT);
   pinMode(RA1_PIN, OUTPUT);
@@ -597,8 +640,12 @@ void setup() {
   //Initialise UART
   Serial.begin(9600);
   Serial.println("Hello World");
+  #ifdef receiver
   gensin();
   g_initial_handshake = true;
+  #else 
+  g_initial_handshake = false;
+  #endif
   vTaskStartScheduler();
 }
 
