@@ -262,7 +262,9 @@ void sampleISR() {
   }
 
   cVout = cVout >> (8 - knob3.knobrotation);
-  cVout = max(-128, min(127, (int)(cVout/count)));
+  //cVout = max(-128, min(127, (int)(cVout/count)));
+  cVout = (float)cVout/count;
+  if (cVout > 127) cVout = 127;
   frund = cVout;
   analogWrite(OUTR_PIN, cVout+128);
 }
@@ -329,10 +331,10 @@ void handshaketask(void * pvParameters) {
         #endif
       }
       __atomic_store_n(&g_handshake_received, false, __ATOMIC_RELAXED);
-    }    
+    }  
     xSemaphoreGive(keyArrayMutex);
     xSemaphoreGive(handshakemutex);
-  }
+    }
 }
 
 
