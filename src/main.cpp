@@ -155,6 +155,9 @@ volatile uint8_t g_HSWest = 0;
   volatile int32_t LVout[12] = {0};
   volatile int32_t UVout[12] = {0};
   int32_t frund = 0;
+#else
+  uint8_t g_myVol = 0;
+  uint8_t g_myOct = 0;
 #endif
 
 volatile uint8_t g_myPos = 0;
@@ -441,10 +444,16 @@ void displayUpdateTask(void * pvParameters){
     #endif
     u8g2.drawStr(5,20, "Volume:");
     u8g2.setCursor(60,20);
+    #ifdef receiver
     u8g2.print(knob3.knobrotation,DEC); 
-    u8g2.drawStr(5,30, "Octave:");
     u8g2.setCursor(50,30);
     u8g2.print(knob2.knobrotation,DEC); 
+    #else
+    u8g2.print(g_myVol,DEC);
+    u8g2.setCursor(50,30);
+    u8g2.print(g_myOct,DEC); 
+    #endif
+    u8g2.drawStr(5,30, "Octave:");
 
     u8g2.sendBuffer();          // transfer internal memory to the display
     digitalToggle(LED_BUILTIN);
@@ -468,10 +477,12 @@ void CANSendTask(void * pvParameters){
 void CANDecodeTask(void * pvParameters){
   uint8_t localRX_Message[8];
   uint8_t l_my_id;
+  uint8_t l_myVol;
+  uint8_t l_myOct;
   #ifdef receiver
   const TickType_t xFrequency = 30/portTICK_PERIOD_MS;
   #else
-  const TickType_t xFrequency = 40/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 10/portTICK_PERIOD_MS;
   #endif
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
@@ -479,6 +490,16 @@ void CANDecodeTask(void * pvParameters){
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
     #endif
     xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
+    #ifndef receiver
+    if(localRX_Message[0] == 8){
+      int posDif = g_myPos - 1;
+      l_myVol = localRX_Message[1] & 0xF;
+      l_myOct = ((localRX_Message[1] & 0xF0) >> 4) + posDif;
+      __atomic_store(&g_myVol, &l_myVol, __ATOMIC_RELAXED);
+      __atomic_store(&g_myOct, &l_myOct, __ATOMIC_RELAXED);
+      Serial.print(l_myVol,DEC);
+    }
+    #endif
     xSemaphoreTake(handshakemutex, portMAX_DELAY);
     if(localRX_Message[0] == HANDSHAKE_MSG_ID){
       memcpy((void*)g_handshake_msg, localRX_Message, sizeof g_handshake_msg);
@@ -501,7 +522,6 @@ void CANDecodeTask(void * pvParameters){
     }
     //Serial.print(uoctave_2);
     xSemaphoreGive(handshakemutex);
-    xSemaphoreGive(rxmsgMutex);
   }
 }
 
