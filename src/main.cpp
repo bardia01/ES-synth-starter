@@ -3,27 +3,29 @@
 #include <STM32FreeRTOS.h>
 #include <string.h>
 #include <ES_CAN.h>
+
 #define receiver
+
 // RECEIVER
+
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
 SemaphoreHandle_t handshakemutex;
 
-
 bool g_initial_handshake = false;
 volatile uint8_t g_handshake_msg[8] = {0};
 volatile bool g_handshake_received = 0;
+bool g_outBits[7] = {true, true, true, true, true, true, true};
 
 #ifndef receiver
-  uint8_t MY_ID = 0; 
+  uint8_t MY_ID = 0;
+#else
+  uint8_t MY_ID = 8;
 #endif
 
 #define HANDSHAKE_MSG_ID 255
 
-#ifdef receiver
-  uint8_t MY_ID = 8;
-#endif
 //Constants
   const uint32_t interval = 100; //Display update interval
   QueueHandle_t msgInQ;
@@ -70,22 +72,25 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       delayMicroseconds(2);
       digitalWrite(REN_PIN,LOW);
 }
-volatile uint8_t loctave_1 = 0;
-volatile uint8_t loctave_2 = 0;
 
-volatile uint8_t uoctave_1 = 0;
-volatile uint8_t uoctave_2 = 0;
+#ifdef receiver
+  volatile uint8_t loctave_1 = 0;
+  volatile uint8_t loctave_2 = 0;
 
-volatile int8_t sinwave [1024];
+  volatile uint8_t uoctave_1 = 0;
+  volatile uint8_t uoctave_2 = 0;
 
-void gensin(){
-  float step = 2*3.14159265358979323846 / 1024;
-  float phase = 0;
-  for(uint32_t i = 0; i<1024; i++){
-    sinwave[i] = (int)(127.0*sin(phase));
-    phase += step;
+  volatile int8_t sinwave [1024];
+
+  void gensin(){
+    float step = 2*3.14159265358979323846 / 1024;
+    float phase = 0;
+    for(uint32_t i = 0; i<1024; i++){
+      sinwave[i] = (int)(127.0*sin(phase));
+      phase += step;
+    }
   }
-}
+#endif
 
 //Lab 1 section 1, reading a single row of the key matrix
 volatile int32_t currentStepSize = 0;
@@ -110,8 +115,6 @@ void setRow(uint8_t rowIdx){
 const int32_t stepSizes [] = {50953930, 54077542, 57396381, 60715219, 64229283, 68133799, 72233540, 76528508, 81018701, 85899345, 90975216, 96441538}; // = 2^32 * f / Fs = 2^32 * 440 / 22k
 //[64299564.93684364, 68124038.08814545, 72174973.15141818, 76469940.44741818, 81077269.0013091, 85899345.92, 91006452.48651637]
 std::string keyMap[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-
-volatile uint8_t max_id;
 
 class Knob {
   public:
@@ -147,20 +150,21 @@ volatile uint8_t g_keys_pressed_p2;
 volatile uint8_t g_HSEast = 0;
 volatile uint8_t g_HSWest = 0;
 
-volatile int32_t cVout = 0;
-volatile int32_t RVout[12] = {0};
-volatile int32_t LVout[12] = {0};
-volatile int32_t UVout[12] = {0};
+#ifdef receiver
+  volatile int32_t cVout = 0;
+  volatile int32_t RVout[12] = {0};
+  volatile int32_t LVout[12] = {0};
+  volatile int32_t UVout[12] = {0};
+  int32_t frund = 0;
+#endif
 
+volatile uint8_t g_myPos = 0;
 
-
-// Add a local variable to store last cvout then print that
-int32_t frund = 0;
 uint32_t ID;
 uint8_t RX_Message[8]={0};
 
+#ifdef receiver
 uint16_t count=0;
-
 void sampleISR() {
   count=0;
   static int32_t phaseAccLO[12] = {0};
@@ -177,8 +181,8 @@ void sampleISR() {
       else{
         phaseAccLO[i] += stepSizes[i] >> (1 + 4 - knob2.knobrotation);
       }
-      LVout[i] = (phaseAccLO[i] >> 24); 
-      LVout[i] = LVout[i] >> (8 - knob3.knobrotation);
+      LVout[i] = (phaseAccLO[i] >> 24)-128; 
+      //LVout[i] = LVout[i] >> (8 - knob3.knobrotation);
       cVout += LVout[i];
     }
   }
@@ -191,8 +195,8 @@ void sampleISR() {
       else{
         phaseAccLO[i+8] += stepSizes[i+8] >> (1 + 4 - knob2.knobrotation);
       }
-      LVout[i+8] = (phaseAccLO[i+8] >> 24); 
-      LVout[i+8] = LVout[i+8] >> (8 - knob3.knobrotation);
+      LVout[i+8] = (phaseAccLO[i+8] >> 24)-128; 
+      //LVout[i+8] = LVout[i+8] >> (8 - knob3.knobrotation);
       cVout += LVout[i+8];
     }
   }
@@ -206,8 +210,8 @@ void sampleISR() {
       else{
         phaseAccUO[i] += stepSizes[i] >> (-1 + 4 - knob2.knobrotation);
       }
-      UVout[i] = (phaseAccUO[i] >> 24); 
-      UVout[i] = UVout[i] >> (8 - knob3.knobrotation);
+      UVout[i] = (phaseAccUO[i] >> 24)-128; 
+      //UVout[i] = UVout[i] >> (8 - knob3.knobrotation);
       cVout += UVout[i];
     }
   }
@@ -220,8 +224,8 @@ void sampleISR() {
       else{
         phaseAccUO[i+8] += stepSizes[i+8] >> (-1 + 4 - knob2.knobrotation);
       }
-      UVout[i+8] = (phaseAccUO[i+8] >> 24); 
-      UVout[i+8] = UVout[i+8] >> (8 - knob3.knobrotation);
+      UVout[i+8] = (phaseAccUO[i+8] >> 24)-128; 
+      //UVout[i+8] = UVout[i+8] >> (8 - knob3.knobrotation);
       cVout += UVout[i+8];
     }
   }
@@ -235,8 +239,8 @@ void sampleISR() {
       else{
         phaseAccR[i] += stepSizes[i] >> (4 - knob2.knobrotation);
       }
-      RVout[i] = (phaseAccR[i] >> 24); 
-      RVout[i] = RVout[i] >> (8 - knob3.knobrotation);
+      RVout[i] = (phaseAccR[i] >> 24)-128; 
+      //RVout[i] = RVout[i] >> (8 - knob3.knobrotation);
       cVout += RVout[i];
     }
   }
@@ -249,20 +253,20 @@ void sampleISR() {
       else{
         phaseAccR[i+8] += stepSizes[i+8] >> (4 - knob2.knobrotation);
       }
-      RVout[i+8] = (phaseAccR[i+8] >> 24); 
-      RVout[i+8] = RVout[i+8] >> (8 - knob3.knobrotation);
+      RVout[i+8] = (phaseAccR[i+8] >> 24)-128; 
+      //RVout[i+8] = RVout[i+8] >> (8 - knob3.knobrotation);
       cVout += RVout[i+8];
     }
   }
 
-
+  cVout = cVout >> (8 - knob3.knobrotation);
   cVout = max(-128, min(127, (int)(cVout/count)));
   frund = cVout;
-  analogWrite(OUTR_PIN, (cVout + 128));
+  analogWrite(OUTR_PIN, cVout+128);
 }
+#endif
 
 volatile bool press = 0;
-uint8_t g_myPos = 0;
 
 void writetx(uint8_t totx[], bool is_handshake=0){
   if(!is_handshake) totx[0] = MY_ID;
@@ -273,12 +277,12 @@ void writetx(uint8_t totx[], bool is_handshake=0){
   totx[4] = g_myPos;
 }
 
-bool g_outBits[7] = {true, true, true, true, true, true, true};
-bool tmp_outBits[7] = {true, true, true, true, true, true, true};
-
-
 void handshaketask(void * pvParameters) {
+  #ifdef receiver
   const TickType_t xFrequency = 80/portTICK_PERIOD_MS;
+  #else
+  const TickType_t xFrequency = 300/portTICK_PERIOD_MS;
+  #endif
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
    vTaskDelayUntil( &xLastWakeTime, xFrequency );
@@ -295,10 +299,17 @@ void handshaketask(void * pvParameters) {
     }
     uint8_t l_HSEast = (((keyarraytmp[6]) & 0x08) >> 3);
     uint8_t l_HSWest = (((keyarraytmp[5]) & 0x08) >> 3);
+    #ifdef receiver
     if(g_handshake_received == 1 || g_initial_handshake == 1){
+    #else
+    if(g_handshake_received == 1){
+      Serial.println("Handshake received, west = ");
+    #endif
       if(l_HSWest == 1 && g_myPos ==0){ 
         bool l_outBits[7] = {true, true, true, true, true, false, false};
+        #ifdef receiver
         memcpy(g_outBits, l_outBits, sizeof(l_outBits));
+        #endif
         l_myPos = max((int)g_myPos, g_handshake_msg[4] + 1);
         __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
         uint8_t handshake_msg[8] = {0};
@@ -311,6 +322,9 @@ void handshaketask(void * pvParameters) {
           digitalWrite(REN_PIN,1); 
           digitalWrite(REN_PIN,0);     
         }
+        #ifndef receiver
+        memcpy((void*)g_outBits, l_outBits, sizeof g_outBits);
+        #endif
       }
       __atomic_store_n(&g_handshake_received, false, __ATOMIC_RELAXED);
     }    
@@ -321,7 +335,11 @@ void handshaketask(void * pvParameters) {
 
 
 void scanKeysTask(void * pvParameters) {
+  #ifdef receiver
   const TickType_t xFrequency = 40/portTICK_PERIOD_MS;
+  #else
+  const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
+  #endif
   TickType_t xLastWakeTime = xTaskGetTickCount();
   static int8_t an3,an2,an1 =0;
   uint8_t TX_Message[8] = {0};
@@ -342,7 +360,6 @@ void scanKeysTask(void * pvParameters) {
     memcpy(keyArrayCopy,(void*)keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
       uint16_t keys_pressed_copy = 0;
-      xSemaphoreGive(keyArrayMutex);
       for(uint8_t i = 0; i < 3; i++){
         for(uint8_t j = 0; j < 4; j++)
         {
@@ -356,12 +373,17 @@ void scanKeysTask(void * pvParameters) {
       }
       uint8_t keys_pressed_p1 = keys_pressed_copy & 0xff;
       uint8_t keys_pressed_p2 = (keys_pressed_copy >> 8) & 0xff;
+      #ifdef receiver
       __atomic_store(&loctave_1, &keys_pressed_p1, __ATOMIC_RELAXED);
       __atomic_store(&loctave_2, &keys_pressed_p2, __ATOMIC_RELAXED);
+      writetx(TX_Message);
+      #else
+      __atomic_store(&g_keys_pressed_p1, &keys_pressed_p1, __ATOMIC_RELAXED);
+      __atomic_store(&g_keys_pressed_p2, &keys_pressed_p2, __ATOMIC_RELAXED);
+      writetx(TX_Message, false);
+      #endif
       // Serial.println(keys_pressed_p2, BIN);
 
-      writetx(TX_Message);
-      
       __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       // u8g2.sendBuffer();          // transfer internal memory to the display
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
@@ -410,6 +432,8 @@ void displayUpdateTask(void * pvParameters){
     u8g2.drawStr(5,30, "Octave:");
     u8g2.setCursor(50,30);
     u8g2.print(knob2.knobrotation,DEC); 
+    u8g2.setCursor(70,30);
+    u8g2.print(frund,DEC); 
 
     u8g2.sendBuffer();          // transfer internal memory to the display
     digitalToggle(LED_BUILTIN);
