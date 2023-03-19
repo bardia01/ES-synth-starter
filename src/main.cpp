@@ -13,6 +13,8 @@ SemaphoreHandle_t CAN_TX_Semaphore;
   const uint32_t interval = 100; //Display update interval
   QueueHandle_t msgInQ;
   QueueHandle_t msgOutQ;
+  float filter_coeffs [] = {0.1, 0.2,0.3, 0.4, 0.5};
+  float delay_filter [5] = {0, 0, 0, 0, 0};
 //Pin definitions
   //Row select and enable
   const int RA0_PIN = D3;
@@ -44,6 +46,28 @@ SemaphoreHandle_t CAN_TX_Semaphore;
 //Display driver object
 U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
 
+// FIR filter
+float apply_fir_filter(double input)
+{
+  // Shift the delay line
+  for (int i = 4; i > 0; i--)
+  {
+    delay_filter[i] = delay_filter[i-1];
+  }
+
+  // Add the new sample to the delay line
+  delay_filter[0] = input;
+
+  // Compute the output of the FIR filter
+  float output = 0;
+  for (int i = 0; i < 5; i++)
+  {
+    output += filter_coeffs[i] * delay_filter[i];
+  }
+
+  return output;
+}
+
 volatile int8_t sinwave [1024];
 
 void gensin(){
@@ -74,7 +98,7 @@ volatile int32_t currentStepSize;
 volatile uint8_t keyArray[7];
 uint8_t readCols() {
   uint8_t cols = 0;
-  cols |= digitalRead(C0_PIN) << 0; // 8'b0 bitor one pin << 0 
+  cols |= digitalRead(C0_PIN) << 0; // 8'b0 bitor one pin << 0
   cols |= digitalRead(C1_PIN) << 1;
   cols |= digitalRead(C2_PIN) << 2;
   cols |= digitalRead(C3_PIN) << 3; // like 00000000 or 00000000 or 00000001 or 00000010 or 00000100
@@ -148,21 +172,21 @@ void sampleISR() {
         else{
           phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
         }
-        Vout[i] = (phaseAcc[i] >> 24); 
+        Vout[i] = (phaseAcc[i] >> 24);
         Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
         cVout += Vout[i];
       }
     }
     for(int i=0; i<4;i++){
       if((RX_Message[3] & (1<<i)) != 0){
-        count++; 
+        count++;
         if(RX_Message[1] > 4){
           phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
         }
         else{
           phaseAcc[i+8] += stepSizes[i+8] >> (4 - RX_Message[1]);
         }
-        Vout[i+8] = (phaseAcc[i+8] >> 24); 
+        Vout[i+8] = (phaseAcc[i+8] >> 24);
         Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
         cVout += Vout[i+8];
       }
@@ -170,8 +194,8 @@ void sampleISR() {
   }
   else{
     for(int i=0; i<8;i++){
-      if((RX_Message[2] & (1<<i)) != 0){ 
-        count++; 
+      if((RX_Message[2] & (1<<i)) != 0){
+        count++;
         if(RX_Message[1] > 4){
           phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
         }
@@ -180,16 +204,16 @@ void sampleISR() {
         }
 
         int32_t d = (phaseAcc[i] >> 22);
-        
-        //make table 1024, 
-        Vout[i] = (sinwave[d]); 
+
+        //make table 1024,
+        Vout[i] = (sinwave[d]);
         Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
         cVout += Vout[i];
       }
     }
     for(int i=0; i<4;i++){
       if((RX_Message[3] & (1<<i)) != 0){
-        count++; 
+        count++;
         if(RX_Message[1] > 4){
           phaseAcc[i+8] += stepSizes[i+8] << (RX_Message[1] - 4);
         }
@@ -198,14 +222,15 @@ void sampleISR() {
         }
         int32_t d = (phaseAcc[i+8] >> 22);
 
-        Vout[i+8] = (sinwave[d]); 
+        Vout[i+8] = (sinwave[d]);
         Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
         cVout += Vout[i+8];
       }
     }
   }
-  
+
   cVout = (float)cVout / (float)count;
+  cVout = apply_fir_filter(cVout);
   g_count = count;
   cVout = max(-128, min(127, (int)cVout));
   frund = cVout;
@@ -240,7 +265,7 @@ void scanKeysTask(void * pvParameters) {
       delayMicroseconds(3);
       keyArray[i] = readCols();
     }
-    uint8_t keyArrayCopy[7]; 
+    uint8_t keyArrayCopy[7];
     memcpy(keyArrayCopy,(void*)keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
       uint16_t keys_pressed_copy = 0;
@@ -249,7 +274,7 @@ void scanKeysTask(void * pvParameters) {
         for(uint8_t j = 0; j < 4; j++)
         {
           if(!(keyArrayCopy[i] & (1 << j)))
-          { 
+          {
             press = 1;
             keys_pressed_copy |= (1 << (i*4 + j));
           }
@@ -262,7 +287,7 @@ void scanKeysTask(void * pvParameters) {
       // Serial.println(keys_pressed_p2, BIN);
 
       writetx(TX_Message);
-      
+
       //__atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       // u8g2.sendBuffer();          // transfer internal memory to the display
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
@@ -279,8 +304,8 @@ void scanKeysTask(void * pvParameters) {
 void displayUpdateTask(void * pvParameters){
   const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
-  
-  
+
+
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
@@ -289,7 +314,7 @@ void displayUpdateTask(void * pvParameters){
     xSemaphoreGive(rxmsgMutex);
     u8g2.clearBuffer();         // clear the internal memory
     u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    
+
       // write something to the internal memory
     // if(tmp != 0)
     //   u8g2.drawStr(2,10,keyMap[tmp].c_str());
@@ -300,19 +325,25 @@ void displayUpdateTask(void * pvParameters){
     // pressed = -1;
     u8g2.setCursor(2,30);
     u8g2.print(frund, DEC);
-    u8g2.setCursor(2,20);
-    u8g2.print(keyArray[0],HEX);
-    u8g2.setCursor(22,20);
-    u8g2.print(keyArray[1],HEX); 
-    u8g2.setCursor(42,20);
-    u8g2.print(keyArray[2],HEX);
-
-    u8g2.setCursor(62,20);
+    // u8g2.setCursor(2,20);
+    // u8g2.print(keyArray[0],HEX);
+    // u8g2.setCursor(22,20);
+    // u8g2.print(keyArray[1],HEX);
+    // u8g2.setCursor(42,20);
+    // u8g2.print(keyArray[2],HEX);
+    u8g2.drawStr(2, 10, "Vol:");
+    u8g2.drawStr(50, 10, "Octave: ");
+    if (knob1.knobrotation > 3)
+      u8g2.drawStr(2, 20, "Waveform: Sawtooth");
+    else
+      u8g2.drawStr(2, 20, "Waveform: Sine");
+    u8g2.setCursor(28,10);
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-    
-    u8g2.print(knob3.knobrotation,DEC);
-    u8g2.setCursor(82,20);
+    //u8g2.print(knob3.knobrotation,DEC);
+    u8g2.setCursor(92,10);
+
     u8g2.print(knob2.knobrotation,DEC);
+
     u8g2.print(knob1.knobrotation,DEC);
     xSemaphoreGive(keyArrayMutex);
     u8g2.setCursor(66,30);
@@ -325,7 +356,7 @@ void displayUpdateTask(void * pvParameters){
     // u8g2.setCursor(2,20);
     // u8g2.print(keys,HEX);
     u8g2.sendBuffer();          // transfer internal memory to the display
-    
+
   }
 }
 
@@ -339,7 +370,7 @@ void CANSendTask(void * pvParameters){
 	}
 }
 
-void CANDecodeTask(void * pvParameters){ 
+void CANDecodeTask(void * pvParameters){
   bool local_octave_up;;
   uint32_t localCurrentStepSize = 0;
   uint8_t localRX_Message[8];
@@ -482,7 +513,7 @@ void loop() {
   //   //Serial.println(dog);
   //   next += interval;
   //   //Update display
-    
+
   //   //Toggle LED
   //   digitalToggle(LED_BUILTIN);
   // }
