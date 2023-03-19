@@ -148,8 +148,8 @@ uint8_t g_isTwo = 0;
 volatile uint8_t g_keys_pressed_p1;
 volatile uint8_t g_keys_pressed_p2;
 
-volatile uint8_t g_HSEast = 0;
-volatile uint8_t g_HSWest = 0;
+volatile uint8_t g_HSEast = 1;
+volatile uint8_t g_HSWest = 1;
 
 #ifdef receiver
   volatile int32_t cVout = 0;
@@ -264,9 +264,9 @@ void sampleISR() {
   }
 
   cVout = cVout >> (8 - knob3.knobrotation);
-  //cVout = max(-128, min(127, (int)(cVout/count)));
-  cVout = (float)cVout/count;
-  if (cVout > 127) cVout = 127;
+  cVout = max(-128, min(127, (int)(cVout/count)));
+  // cVout = (float)cVout/count;
+  // if (cVout > 127) cVout = 127;
   frund = cVout;
   analogWrite(OUTR_PIN, cVout+128);
 }
@@ -274,7 +274,7 @@ void sampleISR() {
 
 volatile bool press = 0;
 
-void writetx(uint8_t totx[], bool is_handshake=0){
+void writetx(uint8_t totx[], bool is_handshake=0, bool is_change = 0){
   if(!is_handshake) totx[0] = MY_ID;
   else totx[0] = HANDSHAKE_MSG_ID;
   totx[1] = (knob2.knobrotation << 4) | knob3.knobrotation;
@@ -282,7 +282,7 @@ void writetx(uint8_t totx[], bool is_handshake=0){
   totx[3] = press?g_keys_pressed_p2:totx[3];
   totx[4] = g_myPos;
   totx[6] = g_isThree;
-  totx[7] = g_isTwo;
+  if(is_change){ totx[5] = 1; }
 }
 
 void handshaketask(void * pvParameters) {
@@ -299,7 +299,6 @@ void handshaketask(void * pvParameters) {
    uint8_t keyarraytmp[2];
    uint8_t l_myPos;
    uint8_t l_isThree;
-    uint8_t l_isTwo;
    for(uint8_t i = 5; i < 7; i++){
       setRow(i);
       digitalWrite(REN_PIN,1);   
@@ -312,73 +311,78 @@ void handshaketask(void * pvParameters) {
     bool cond1 = (l_HSWest == 1) && (l_HSEast == 0);
     bool cond2 = (l_HSEast ==0) && (l_HSWest == 0);
     bool cond3 = (l_HSEast == 1) && (l_HSWest ==0);
-    if(g_handshake_received == 1 || g_initial_handshake == 1){
+    if((g_initial_handshake == 1) || (l_HSEast != g_HSEast) || (l_HSWest != g_HSWest)){
+
       Serial.println("Handshake received, west = ");
-    if(cond1){ 
-      l_myPos = 1;//max((int)g_myPos, localRX_Message[4] + 1);
-      //bool l_outBits[7] = {true, true, true, true, true, false, false};
-      if(g_isThree == 1){
-        l_isThree = 0;
-        l_isTwo = 1;
-         __atomic_store(&g_isTwo, &l_isTwo, __ATOMIC_RELAXED);
-        __atomic_store(&g_isThree, &l_isThree, __ATOMIC_RELAXED);
-      }
-      __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
-      //memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
-    }
-    else if(cond2){
-      l_myPos = 2;
-      l_isThree = 1;
-      if(g_isTwo ==1){
-        l_isTwo = 0;
-        __atomic_store(&g_isTwo, &l_isTwo, __ATOMIC_RELAXED);
-      }
-      __atomic_store(&g_isThree, &l_isThree, __ATOMIC_RELAXED);
-      __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
-      //bool l_outBits[7] = {true, true, true, true, true, true, false};
-      //memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
-    }
-    else if(cond3){
-        l_myPos = max((int)g_myPos, 2);
-        if(g_handshake_msg[6] == 1) l_myPos = 3;
-        if(g_handshake_msg[7] == 1) l_myPos = 2;
+      if(cond1){ 
+        l_myPos = 1;//max((int)g_myPos, localRX_Message[4] + 1);
+        //bool l_outBits[7] = {true, true, true, true, true, false, false};
         if(g_isThree == 1){
-          l_myPos = 2;
           l_isThree = 0;
           __atomic_store(&g_isThree, &l_isThree, __ATOMIC_RELAXED);
         }
         __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
-        //bool l_outBits[7] = {true, true, true, true, true, true, true};
         //memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
-    }
-    // #ifdef receiver
-    // //if(g_handshake_received == 1 || g_initial_handshake == 1){
-    // #else
-    // if(g_handshake_received == 1){
-    //   Serial.println("Handshake received, west = ");
-    // #endif
-      // if(l_HSWest == 1 && g_myPos ==0){ 
-      //   bool l_outBits[7] = {true, true, true, true, true, false, false};
-      //   #ifdef receiver
-      //   memcpy(g_outBits, l_outBits, sizeof(l_outBits));
-      //   #endif
-      //   l_myPos = max((int)g_myPos, g_handshake_msg[4] + 1);
-      //   __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
-       uint8_t handshake_msg[8] = {0};
-       writetx(handshake_msg, true);
-       xQueueSend(msgOutQ, handshake_msg, portMAX_DELAY);
+      }
+      else if(cond2){
+        l_myPos = 2;
+        l_isThree = 1;
+        __atomic_store(&g_isThree, &l_isThree, __ATOMIC_RELAXED);
+        __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
+        //bool l_outBits[7] = {true, true, true, true, true, true, false};
+        //memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
+      }
+      else if(cond3){
+          l_myPos = max((int)g_myPos, 2);
+          if(g_handshake_msg[6] == 1) l_myPos = 3;
+          if(g_isThree == 1){
+            l_myPos = 2;
+            l_isThree = 0;
+            __atomic_store(&g_isThree, &l_isThree, __ATOMIC_RELAXED);
+          }
+          __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
+          //bool l_outBits[7] = {true, true, true, true, true, true, true};
+          //memcpy(tmp_outBits, l_outBits, sizeof l_outBits);
+      }
+      else{
+        l_myPos = 0;
+        __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
+      }
+    
+      // #ifdef receiver
+      // //if(g_handshake_received == 1 || g_initial_handshake == 1){
+      // #else
+      // if(g_handshake_received == 1){
+      //   Serial.println("Handshake received, west = ");
+      // #endif
+        // if(l_HSWest == 1 && g_myPos ==0){ 
+        //   bool l_outBits[7] = {true, true, true, true, true, false, false};
+        //   #ifdef receiver
+        //   memcpy(g_outBits, l_outBits, sizeof(l_outBits));
+        //   #endif
+        //   l_myPos = max((int)g_myPos, g_handshake_msg[4] + 1);
+        //   __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
+        uint8_t handshake_msg[8] = {0};
+        
+        if((l_HSEast != g_HSEast) || (l_HSWest != g_HSWest)){
+          writetx(handshake_msg, true, true);
+        }
+        else writetx(handshake_msg, true, false);
+        xQueueSend(msgOutQ, handshake_msg, portMAX_DELAY);
         g_initial_handshake = false;
-        // for(uint8_t i = 0; i < 7; i++){
-        //   setRow(i);
-        //   digitalWrite(OUT_PIN,l_outBits[i]); //Set value to latch in DFF
-        //   digitalWrite(REN_PIN,1); 
-        //   digitalWrite(REN_PIN,0);     
+          // for(uint8_t i = 0; i < 7; i++){
+          //   setRow(i);
+          //   digitalWrite(OUT_PIN,l_outBits[i]); //Set value to latch in DFF
+          //   digitalWrite(REN_PIN,1); 
+          //   digitalWrite(REN_PIN,0);     
+          // }
+        //   #ifndef receiver
+        //   memcpy((void*)g_outBits, l_outBits, sizeof g_outBits);
+        //   #endif
         // }
-      //   #ifndef receiver
-      //   memcpy((void*)g_outBits, l_outBits, sizeof g_outBits);
-      //   #endif
-      // }
-       __atomic_store_n(&g_handshake_received, false, __ATOMIC_RELAXED);
+        __atomic_store(&g_HSEast, &l_HSEast, __ATOMIC_RELAXED);
+        __atomic_store(&g_HSWest, &l_HSWest, __ATOMIC_RELAXED);
+        __atomic_store_n(&g_handshake_received, false, __ATOMIC_RELAXED);
     } 
     xSemaphoreGive(keyArrayMutex);
     xSemaphoreGive(handshakemutex);
@@ -428,8 +432,18 @@ void scanKeysTask(void * pvParameters) {
       uint8_t keys_pressed_p1 = keys_pressed_copy & 0xff;
       uint8_t keys_pressed_p2 = (keys_pressed_copy >> 8) & 0xff;
       #ifdef receiver
+      if(g_myPos == 1){
       __atomic_store(&loctave_1, &keys_pressed_p1, __ATOMIC_RELAXED);
       __atomic_store(&loctave_2, &keys_pressed_p2, __ATOMIC_RELAXED);
+      }
+      else if(g_myPos == 0 || g_myPos == 2){
+       __atomic_store(&g_keys_pressed_p1, &keys_pressed_p1, __ATOMIC_RELAXED);
+      __atomic_store(&g_keys_pressed_p2, &keys_pressed_p2, __ATOMIC_RELAXED);
+      }
+      else if(g_myPos == 3){
+      __atomic_store(&uoctave_1, &keys_pressed_p1, __ATOMIC_RELAXED);
+      __atomic_store(&uoctave_2, &keys_pressed_p2, __ATOMIC_RELAXED);
+      }
       writetx(TX_Message);
       #else
       __atomic_store(&g_keys_pressed_p1, &keys_pressed_p1, __ATOMIC_RELAXED);
@@ -451,8 +465,6 @@ void scanKeysTask(void * pvParameters) {
 
       uint8_t l_HSEast = (((keyArrayCopy[6]) & 0x08) >> 3);
       uint8_t l_HSWest = (((keyArrayCopy[5]) & 0x08) >> 3);
-      __atomic_store(&g_HSEast, &l_HSEast, __ATOMIC_RELAXED);
-      __atomic_store(&g_HSWest, &l_HSWest, __ATOMIC_RELAXED);
 
       #ifdef receiver
       if (g_myPos == 0){ xQueueSend(msgOutQ, TX_Message, 0);}
@@ -555,19 +567,44 @@ void CANDecodeTask(void * pvParameters){
     xSemaphoreTake(handshakemutex, portMAX_DELAY);
     if(localRX_Message[0] == HANDSHAKE_MSG_ID){
       memcpy((void*)g_handshake_msg, localRX_Message, sizeof g_handshake_msg);
+      if(localRX_Message[5] == 1){
+        g_initial_handshake = true;
+      }
       g_handshake_received = true;
     }
     else{
       #ifdef receiver
       memcpy(RX_Message, localRX_Message, sizeof RX_Message);
-      if(localRX_Message[4] == 2){
-        __atomic_store_n(&g_keys_pressed_p1, localRX_Message[2], __ATOMIC_RELAXED);
-        __atomic_store_n(&g_keys_pressed_p2, localRX_Message[3], __ATOMIC_RELAXED);
-      }
-      else if(localRX_Message[4] == 3){
-        __atomic_store_n(&uoctave_1, localRX_Message[2], __ATOMIC_RELAXED);
-        __atomic_store_n(&uoctave_2, localRX_Message[3], __ATOMIC_RELAXED);
-      }
+        if(g_myPos == 1){
+          if(localRX_Message[4] == 2){
+            __atomic_store_n(&g_keys_pressed_p1, localRX_Message[2], __ATOMIC_RELAXED);
+            __atomic_store_n(&g_keys_pressed_p2, localRX_Message[3], __ATOMIC_RELAXED);
+          }
+          else if(localRX_Message[4] == 3){
+            __atomic_store_n(&uoctave_1, localRX_Message[2], __ATOMIC_RELAXED);
+            __atomic_store_n(&uoctave_2, localRX_Message[3], __ATOMIC_RELAXED);
+          }
+        }
+        else if (g_myPos == 2){
+          if(localRX_Message[4] == 1){
+            __atomic_store_n(&loctave_1, localRX_Message[2], __ATOMIC_RELAXED);
+            __atomic_store_n(&loctave_1, localRX_Message[3], __ATOMIC_RELAXED);
+          }
+          else if(localRX_Message[4] == 3){
+            __atomic_store_n(&uoctave_1, localRX_Message[2], __ATOMIC_RELAXED);
+            __atomic_store_n(&uoctave_2, localRX_Message[3], __ATOMIC_RELAXED);
+          }
+        }
+        else if (g_myPos == 3){
+          if(localRX_Message[4] == 1){
+            __atomic_store_n(&loctave_1, localRX_Message[2], __ATOMIC_RELAXED);
+            __atomic_store_n(&loctave_1, localRX_Message[3], __ATOMIC_RELAXED);
+          }
+          else if(localRX_Message[4] == 2){
+            __atomic_store_n(&g_keys_pressed_p1, localRX_Message[2], __ATOMIC_RELAXED);
+            __atomic_store_n(&g_keys_pressed_p2, localRX_Message[3], __ATOMIC_RELAXED);
+          }
+        }
       #else
       memcpy((void*)RX_Message, localRX_Message, sizeof RX_Message);
       #endif
