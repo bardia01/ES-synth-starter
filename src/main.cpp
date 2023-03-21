@@ -7,6 +7,7 @@
 #include <sinwave.h>
 
 #define SAMPLE_BUFFER_SIZE 128
+#define LFO_STEP_SIZE 976128.9309
 
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
@@ -94,6 +95,15 @@ volatile uint8_t loctave_2 = 0;
 volatile uint8_t uoctave_1 = 0;
 volatile uint8_t uoctave_2 = 0;
 
+volatile float lfowave [4400];
+
+void genflo(){
+  volatile float lfoPhase = 0;
+  for(uint32_t i = 0; i< 4400; i++){
+    lfowave[i] = ((sin(2*PI*lfoPhase / (UINT_MAX))+1)/2);
+    lfoPhase += LFO_STEP_SIZE;
+  }
+}
 
 //Lab 1 section 1, reading a single row of the key matrix
 volatile int32_t currentStepSize = 0;
@@ -481,6 +491,8 @@ void CANSendTask(void * pvParameters){
 	}
 }
 
+volatile uint16_t lfo_index = 0;
+
 void sampleBufferTask(void* pvParameters){
   // const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   // TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -494,7 +506,7 @@ void sampleBufferTask(void* pvParameters){
     // vTaskDelayUntil( &xLastWakeTime, xFrequency );
     xSemaphoreTake(sampleBufferSemaphore, portMAX_DELAY);
     for (uint32_t writeCtr = 0; writeCtr < SAMPLE_BUFFER_SIZE; writeCtr++) {
-      
+      if(lfo_index == 4400) lfo_index = 0;
       // Serial.println("got here\n");
       int32_t cVout = 0;
       uint16_t count=0;
@@ -530,7 +542,7 @@ void sampleBufferTask(void* pvParameters){
       }
       cVout = (float)cVout / (float)count;
       g_count = count;
-      cVout = max(-128, min(127, (int)cVout));
+      cVout = max(-128, min(127, (int)(cVout*lfowave[lfo_index++])));
       frund = cVout;
       if (writeBuffer1)
         sampleBuffer1[writeCtr] = cVout + 128;
@@ -695,6 +707,7 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Hello World");
   //gensin();
+  genflo();
 
   g_initial_handshake = true;
   vTaskStartScheduler();
