@@ -1,13 +1,95 @@
-void decode_knob3(bool prev_a, bool prev_b, bool curr_a, bool curr_b){
-  uint8_t concat_ab = (prev_b << 3) | (prev_a << 2) | (curr_b << 1) | curr_a;
-  int8_t change = rotato[concat_ab];
-  if(change == impossible){
-    local_rotation_variable += prev_change;
-    prev_change = 0;
+if(knob1.knobrotation > 3){
+    for(int i=0; i<8;i++){
+      if((loctave_1 & (1<<i)) != 0){
+        count++;
+        if(knob2.knobrotation > 4){
+          phaseAcc[i] += stepSizes[i] << (knob2.knobrotation - 4 - 1);
+        }
+        else{
+          phaseAcc[i] += stepSizes[i] >> (1 + 4 - knob2.knobrotation);
+        }
+        Vout[i] = (phaseAcc[i] >> 24); 
+        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+        cVout += Vout[i];
+      }
+    }
+    for(int i=0; i<4;i++){
+      if((loctave_2 & (1<<i)) != 0){
+        count++; 
+        if(knob2.knobrotation > 4){
+          phaseAcc[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 - 1);
+        }
+        else{
+          phaseAcc[i+8] += stepSizes[i+8] >> (1 + 4 - knob2.knobrotation);
+        }
+        Vout[i+8] = (phaseAcc[i+8] >> 24); 
+        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+        cVout += Vout[i+8];
+      }
+    }
   }
   else{
-    local_rotation_variable += change;
-    prev_change = change;
+    for(int i=0; i<8;i++){
+      if((uoctave_1 & (1<<i)) != 0){ 
+        count++; 
+        if(knob2.knobrotation > 4){
+          phaseAcc[i] += stepSizes[i] << (knob2.knobrotation - 4 + 1);
+        }
+        else{
+          phaseAcc[i] += stepSizes[i] >> (-1 + 4 - knob2.knobrotation);
+        }
+
+        int32_t d = (phaseAcc[i] >> 22);
+        
+        //make table 1024, 
+        Vout[i] = (sinwave[d]); 
+        Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+        cVout += Vout[i];
+      }
+    }
+    for(int i=0; i<4;i++){
+      if((uoctave_2 & (1<<i)) != 0){
+        count++; 
+        if(knob2.knobrotation > 4){
+          phaseAcc[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + 1);
+        }
+        else{
+          phaseAcc[i+8] += stepSizes[i+8] >> (-1 + 4 - knob2.knobrotation);
+        }
+        int32_t d = (phaseAcc[i+8] >> 22);
+
+        Vout[i+8] = (sinwave[d]); 
+        Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+        cVout += Vout[i+8];
+      }
+    }
+    for(int i=0; i<8;i++){
+    if((g_keys_pressed_p1 & (1<<i)) != 0){ 
+      count++;
+      if(knob2.knobrotation > 4){
+        phaseAccR[i] += stepSizes[i] << (knob2.knobrotation - 4);
+      }
+      else{
+        phaseAccR[i] += stepSizes[i] >> (4 - knob2.knobrotation);
+      }
+      Vout[i] = (phaseAccR[i] >> 24); 
+      Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+      cVout += Vout[i];
+    }
   }
-  local_rotation_variable = local_rotation_variable > 8 ? 8 : local_rotation_variable < 0 ? 0 : local_rotation_variable;
-}
+  for(int i=0; i<4;i++){
+    if((g_keys_pressed_p2 & (1<<i)) != 0){ 
+      count++;
+      if(knob2.knobrotation > 4){
+        phaseAccR[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4);
+      }
+      else{
+        phaseAccR[i+8] += stepSizes[i+8] >> (4 - knob2.knobrotation);
+      }
+      Vout[i+8] = (phaseAccR[i+8] >> 24); 
+      Vout[i+8] = Vout[i+8] >> (8 - knob3.knobrotation);
+      cVout += Vout[i+8];
+    }
+  }
+
+  }
