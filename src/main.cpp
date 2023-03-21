@@ -8,6 +8,7 @@
 
 #define SAMPLE_BUFFER_SIZE 128
 #define LFO_STEP_SIZE 976128.9309
+#define JOYSTICK_MAX 920
 
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
@@ -158,6 +159,7 @@ class Knob {
 Knob knob3(8, 0);
 Knob knob2(8, 0);
 Knob knob1(8,0);
+Knob knob0(8,0);
 
 volatile uint8_t g_keys_pressed_p1;
 volatile uint8_t g_keys_pressed_p2;
@@ -177,6 +179,10 @@ uint8_t sampleBuffer1[SAMPLE_BUFFER_SIZE];
 volatile bool writeBuffer1 = false;
 
 uint8_t g_count=10;
+
+volatile uint32_t g_joyx = 0;
+volatile uint32_t g_joyy = 0;
+
 volatile bool sinsound = 0;
 inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
   for(int i=0; i<8;i++){
@@ -304,6 +310,16 @@ inline void create_triangle(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
     }
   }
 }
+inline void create_custom(int32_t &cVout, uint16_t &count, int32_t vout_arr, uint32_t phase_arr){
+  //joystick neutral = 522, 477
+  count++;
+  phase_arr += stepSizes[0] * (2*(g_joyx- 522)/JOYSTICK_MAX);
+  vout_arr = (phase_arr >> 24) - 128;
+  vout_arr = vout_arr >> (8 - knob3.knobrotation);
+  cVout += vout_arr;
+}
+
+
 void sampleISR() {
   static uint32_t readCtr = 0;
     if (readCtr == SAMPLE_BUFFER_SIZE){
@@ -332,7 +348,6 @@ void writetx(uint8_t totx[], bool is_handshake=0){
 
 bool g_outBits[7] = {true, true, true, true, true, true, true};
 bool tmp_outBits[7] = {true, true, true, true, true, true, true};
-
 
 void handshaketask(void * pvParameters) {
   const TickType_t xFrequency = 80/portTICK_PERIOD_MS;
@@ -375,12 +390,30 @@ void handshaketask(void * pvParameters) {
     xSemaphoreGive(handshakemutex);
   }
 }
+/*
+              X    Y
+FULL LEFT =  926   ~479
+FULL RIGHT = 144   ~479
+FULL UP =   ~479    131
+FULL DOWN = ~479    890
 
+*/
+void joysticktask(void * pvParameters){
+  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  while(1){
+    // Read joystick values
+      uint32_t l_joyx = analogRead(JOYX_PIN);
+      uint32_t l_joyy = analogRead(JOYY_PIN);
+      __atomic_store(&g_joyx, &l_joyx, __ATOMIC_RELAXED);
+      __atomic_store(&g_joyy, &l_joyy, __ATOMIC_RELAXED);
+  }
+}
 
 void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 40/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
-  static int8_t an3,an2,an1 =0;
+  static uint8_t an3,an2,an1,an0 =0;
   uint8_t TX_Message[8] = {0};
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
@@ -418,15 +451,19 @@ void scanKeysTask(void * pvParameters) {
       writetx(TX_Message);
       
       __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-      // u8g2.sendBuffer();          // transfer internal memory to the display
-      xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-      knob3.getValue(an3);
-      knob2.getValue(an2);
-      knob1.getValue(an1);
-      xSemaphoreGive(keyArrayMutex);
+
+      // Read knob values
       an3 = ((keyArrayCopy[3]) & 0x03);
       an2 = (((keyArrayCopy[3]) & 0x0C) >> 2);
       an1 = ((keyArrayCopy[4])& 0x03);
+      an0 = ((keyArrayCopy[4])& 0x0C) >> 2;
+
+      // Assign knob values to knob objects
+      knob3.getValue(an3);
+      knob2.getValue(an2);
+      knob1.getValue(an1);
+      knob0.getValue(an0);
+      
 
       uint8_t l_HSEast = (((keyArrayCopy[6]) & 0x08) >> 3);
       uint8_t l_HSWest = (((keyArrayCopy[5]) & 0x08) >> 3);
@@ -458,7 +495,11 @@ void displayUpdateTask(void * pvParameters){
       u8g2.drawStr(92,30, "RCVR");
     #endif
     u8g2.drawStr(5,10, "Note:");
-    if(loctave_1 || loctave_2) u8g2.drawStr(40,10,keyMap[currentStepSize].c_str());
+    if(loctave_1 || loctave_2) u8g2.drawStr(30,10,keyMap[currentStepSize].c_str());
+    u8g2.setCursor(50,10);
+    u8g2.print(g_joyx, DEC);
+    u8g2.setCursor(70,10);
+    u8g2.print(g_joyy, DEC);
     u8g2.drawStr(5,20, "Volume:");
     u8g2.setCursor(50,20);
     u8g2.print(knob3.knobrotation,DEC);
@@ -472,7 +513,7 @@ void displayUpdateTask(void * pvParameters){
     u8g2.setCursor(50,30);
     u8g2.print(knob2.knobrotation,DEC); 
     u8g2.setCursor(70,30);
-    u8g2.print(frund,DEC); 
+    u8g2.print(knob0.knobrotation,DEC); 
 
     u8g2.sendBuffer();          // transfer internal memory to the display
     digitalToggle(LED_BUILTIN);
@@ -496,12 +537,14 @@ volatile uint16_t lfo_index = 0;
 void sampleBufferTask(void* pvParameters){
   // const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   // TickType_t xLastWakeTime = xTaskGetTickCount();
-  uint32_t phaseAccLO[12] = {0};
-  uint32_t phaseAccUO[12] = {0};
-  uint32_t phaseAccR[12] = {0};
+  static uint32_t phaseAccLO[12] = {0};
+  static uint32_t phaseAccUO[12] = {0};
+  static uint32_t phaseAccR[12] = {0};
   int32_t RVout[12] = {0};
   int32_t LVout[12] = {0};
   int32_t UVout[12] = {0};
+  uint32_t js_phase = 0;
+  int32_t js_vout = 0;  
   while(1){
     // vTaskDelayUntil( &xLastWakeTime, xFrequency );
     xSemaphoreTake(sampleBufferSemaphore, portMAX_DELAY);
@@ -540,9 +583,13 @@ void sampleBufferTask(void* pvParameters){
       create_triangle(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
       create_triangle(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
       }
+      else if(knob1.knobrotation == 3){
+        create_custom(cVout, count, js_vout, js_phase);
+      }
       cVout = (float)cVout / (float)count;
       g_count = count;
-      cVout = max(-128, min(127, (int)(cVout*lfowave[lfo_index++])));
+      float multiplier = (knob0.knobrotation > 4) ? lfowave[lfo_index++] : 1;
+      cVout = max(-128, min(127, (int)(cVout*multiplier)));
       frund = cVout;
       if (writeBuffer1)
         sampleBuffer1[writeCtr] = cVout + 128;
@@ -645,6 +692,14 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     1,			/* Task priority */
     &handshakehandle);
+  TaskHandle_t joystickhandle = NULL;
+  xTaskCreate(
+    joysticktask,		/* Function that implements the task */
+    "joystick",		/* Text name for the task */
+    32,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    1,			/* Task priority */
+    &joystickhandle);
 
   TaskHandle_t displayUpdateHandle = NULL;
   xTaskCreate(
