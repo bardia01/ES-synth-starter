@@ -16,11 +16,15 @@ volatile uint8_t g_handshake_msg[8] = {0};
 volatile bool g_handshake_received = 0;
 
 #ifndef receiver
-  uint8_t MY_ID = 0; 
+  uint8_t MY_ID = 0;
 #endif
 
 #define HANDSHAKE_MSG_ID 255
-
+#define DISABLE_THREADS 0
+//#define TEST_SCANKEYS 0
+// #define TEST_HANDSHAKE 0
+// #define TEST_DISPLAYUPDATE 0
+#define TEST_CANSEND 0
 #ifdef receiver
   uint8_t MY_ID = 8;
 #endif
@@ -92,7 +96,7 @@ volatile int32_t currentStepSize = 0;
 volatile uint8_t keyArray[7];
 uint8_t readCols() {
   uint8_t cols = 0;
-  cols |= digitalRead(C0_PIN) << 0; // 8'b0 bitor one pin << 0 
+  cols |= digitalRead(C0_PIN) << 0; // 8'b0 bitor one pin << 0
   cols |= digitalRead(C1_PIN) << 1;
   cols |= digitalRead(C2_PIN) << 2;
   cols |= digitalRead(C3_PIN) << 3; // like 00000000 or 00000000 or 00000001 or 00000010 or 00000100
@@ -170,20 +174,20 @@ void sampleISR() {
   // LOWER OCTAVE
   for(int i=0; i<8;i++){
     if((loctave_1 & (1<<i)) != 0){
-      count++; 
+      count++;
       if(knob2.knobrotation - 1 > 4){
         phaseAccLO[i] += stepSizes[i] << (knob2.knobrotation - 4 - 1);
       }
       else{
         phaseAccLO[i] += stepSizes[i] >> (1 + 4 - knob2.knobrotation);
       }
-      LVout[i] = (phaseAccLO[i] >> 24); 
+      LVout[i] = (phaseAccLO[i] >> 24);
       LVout[i] = LVout[i] >> (8 - knob3.knobrotation);
       cVout += LVout[i];
     }
   }
   for(int i=0; i<4;i++){
-    if((loctave_2 & (1<<i)) != 0){ 
+    if((loctave_2 & (1<<i)) != 0){
       count++;
       if(knob2.knobrotation - 1 > 4){
         phaseAccLO[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 - 1);
@@ -191,14 +195,14 @@ void sampleISR() {
       else{
         phaseAccLO[i+8] += stepSizes[i+8] >> (1 + 4 - knob2.knobrotation);
       }
-      LVout[i+8] = (phaseAccLO[i+8] >> 24); 
+      LVout[i+8] = (phaseAccLO[i+8] >> 24);
       LVout[i+8] = LVout[i+8] >> (8 - knob3.knobrotation);
       cVout += LVout[i+8];
     }
   }
  // UPPER OCTAVE
   for(int i=0; i<8;i++){
-    if((uoctave_1 & (1<<i)) != 0){ 
+    if((uoctave_1 & (1<<i)) != 0){
       count++;
       if(knob2.knobrotation + 1 > 4){
         phaseAccUO[i] += stepSizes[i] << (knob2.knobrotation - 4 + 1);
@@ -206,7 +210,7 @@ void sampleISR() {
       else{
         phaseAccUO[i] += stepSizes[i] >> (-1 + 4 - knob2.knobrotation);
       }
-      UVout[i] = (phaseAccUO[i] >> 24); 
+      UVout[i] = (phaseAccUO[i] >> 24);
       UVout[i] = UVout[i] >> (8 - knob3.knobrotation);
       cVout += UVout[i];
     }
@@ -220,14 +224,14 @@ void sampleISR() {
       else{
         phaseAccUO[i+8] += stepSizes[i+8] >> (-1 + 4 - knob2.knobrotation);
       }
-      UVout[i+8] = (phaseAccUO[i+8] >> 24); 
+      UVout[i+8] = (phaseAccUO[i+8] >> 24);
       UVout[i+8] = UVout[i+8] >> (8 - knob3.knobrotation);
       cVout += UVout[i+8];
     }
   }
   // MIDDLE OCTAVE
   for(int i=0; i<8;i++){
-    if((g_keys_pressed_p1 & (1<<i)) != 0){ 
+    if((g_keys_pressed_p1 & (1<<i)) != 0){
       count++;
       if(knob2.knobrotation > 4){
         phaseAccR[i] += stepSizes[i] << (knob2.knobrotation - 4);
@@ -235,13 +239,13 @@ void sampleISR() {
       else{
         phaseAccR[i] += stepSizes[i] >> (4 - knob2.knobrotation);
       }
-      RVout[i] = (phaseAccR[i] >> 24); 
+      RVout[i] = (phaseAccR[i] >> 24);
       RVout[i] = RVout[i] >> (8 - knob3.knobrotation);
       cVout += RVout[i];
     }
   }
   for(int i=0; i<4;i++){
-    if((g_keys_pressed_p2 & (1<<i)) != 0){ 
+    if((g_keys_pressed_p2 & (1<<i)) != 0){
       count++;
       if(knob2.knobrotation > 4){
         phaseAccR[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4);
@@ -249,7 +253,7 @@ void sampleISR() {
       else{
         phaseAccR[i+8] += stepSizes[i+8] >> (4 - knob2.knobrotation);
       }
-      RVout[i+8] = (phaseAccR[i+8] >> 24); 
+      RVout[i+8] = (phaseAccR[i+8] >> 24);
       RVout[i+8] = RVout[i+8] >> (8 - knob3.knobrotation);
       cVout += RVout[i+8];
     }
@@ -280,23 +284,25 @@ bool tmp_outBits[7] = {true, true, true, true, true, true, true};
 void handshaketask(void * pvParameters) {
   const TickType_t xFrequency = 80/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  #ifndef TEST_HANDSHAKE
   while(1){
    vTaskDelayUntil( &xLastWakeTime, xFrequency );
+  #endif
    xSemaphoreTake(handshakemutex, portMAX_DELAY);
    xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
    uint8_t keyarraytmp[2];
    uint8_t l_myPos;
    for(uint8_t i = 5; i < 7; i++){
       setRow(i);
-      digitalWrite(REN_PIN,1);   
+      digitalWrite(REN_PIN,1);
       delayMicroseconds(3);
       keyarraytmp[i] = readCols();
-      digitalWrite(REN_PIN,0);     
+      digitalWrite(REN_PIN,0);
     }
     uint8_t l_HSEast = (((keyarraytmp[6]) & 0x08) >> 3);
     uint8_t l_HSWest = (((keyarraytmp[5]) & 0x08) >> 3);
     if(g_handshake_received == 1 || g_initial_handshake == 1){
-      if(l_HSWest == 1 && g_myPos ==0){ 
+      if(l_HSWest == 1 && g_myPos ==0){
         bool l_outBits[7] = {true, true, true, true, true, false, false};
         memcpy(g_outBits, l_outBits, sizeof(l_outBits));
         l_myPos = max((int)g_myPos, g_handshake_msg[4] + 1);
@@ -308,15 +314,17 @@ void handshaketask(void * pvParameters) {
         for(uint8_t i = 0; i < 7; i++){
           setRow(i);
           digitalWrite(OUT_PIN,l_outBits[i]); //Set value to latch in DFF
-          digitalWrite(REN_PIN,1); 
-          digitalWrite(REN_PIN,0);     
+          digitalWrite(REN_PIN,1);
+          digitalWrite(REN_PIN,0);
         }
       }
       __atomic_store_n(&g_handshake_received, false, __ATOMIC_RELAXED);
-    }    
+    }
     xSemaphoreGive(keyArrayMutex);
     xSemaphoreGive(handshakemutex);
+  #ifndef TEST_HANDSHAKE
   }
+  #endif
 }
 
 
@@ -325,20 +333,23 @@ void scanKeysTask(void * pvParameters) {
   TickType_t xLastWakeTime = xTaskGetTickCount();
   static int8_t an3,an2,an1 =0;
   uint8_t TX_Message[8] = {0};
+  #ifndef TEST_SCANKEYS
   while(1){
+
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
+  #endif
     uint32_t localCurrentStepSize = 0;
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     //Access keyArray here
     for(uint8_t i = 0; i < 7; i++){
       setRow(i);
       digitalWrite(OUT_PIN,g_outBits[i]); //Set value to latch in DFF
-      digitalWrite(REN_PIN,1);   
+      digitalWrite(REN_PIN,1);
       delayMicroseconds(3);
       keyArray[i] = readCols();
-      digitalWrite(REN_PIN,0);   
+      digitalWrite(REN_PIN,0);
     }
-    uint8_t keyArrayCopy[7]; 
+    uint8_t keyArrayCopy[7];
     memcpy(keyArrayCopy,(void*)keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
       uint16_t keys_pressed_copy = 0;
@@ -347,7 +358,7 @@ void scanKeysTask(void * pvParameters) {
         for(uint8_t j = 0; j < 4; j++)
         {
           if(!(keyArrayCopy[i] & (1 << j)))
-          { 
+          {
             localCurrentStepSize = (i*4 + j);
             press = 1;
             keys_pressed_copy |= (1 << (i*4 + j));
@@ -361,7 +372,7 @@ void scanKeysTask(void * pvParameters) {
       // Serial.println(keys_pressed_p2, BIN);
 
       writetx(TX_Message);
-      
+
       __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
       // u8g2.sendBuffer();          // transfer internal memory to the display
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
@@ -380,13 +391,17 @@ void scanKeysTask(void * pvParameters) {
 
       if(g_myPos == 0){ xQueueSend(msgOutQ, TX_Message, 0);}
       else xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
+  #ifndef TEST_SCANKEYS
   }
+  #endif
 }
 void displayUpdateTask(void * pvParameters){
   const TickType_t xFrequency = 40/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  #ifndef TEST_DISPLAYUPDATE
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
+  #endif
     u8g2.setFont(u8g2_font_ncenB08_tr);
     u8g2.clearBuffer();         // clear the internal memory
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
@@ -395,7 +410,7 @@ void displayUpdateTask(void * pvParameters){
 	    CAN_RX(ID, RX_Message);
     #endif
     xSemaphoreGive(rxmsgMutex);
-  
+
     u8g2.drawStr(95,10, "Pos:");
     u8g2.setCursor(120,10);
     u8g2.print(g_myPos, DEC);
@@ -406,26 +421,35 @@ void displayUpdateTask(void * pvParameters){
     if(loctave_1 || loctave_2) u8g2.drawStr(40,10,keyMap[currentStepSize].c_str());
     u8g2.drawStr(5,20, "Volume:");
     u8g2.setCursor(60,20);
-    u8g2.print(knob3.knobrotation,DEC); 
+    u8g2.print(knob3.knobrotation,DEC);
     u8g2.drawStr(5,30, "Octave:");
     u8g2.setCursor(50,30);
-    u8g2.print(knob2.knobrotation,DEC); 
+    u8g2.print(knob2.knobrotation,DEC);
 
     u8g2.sendBuffer();          // transfer internal memory to the display
     digitalToggle(LED_BUILTIN);
+  #ifndef TEST_DISPLAYUPDATE
   }
+  #endif
 }
 
 uint8_t g_msgOut[8];
 void CANSendTask(void * pvParameters){
+  uint8_t test[8] = {15, 15, 15, 15, 15, 15, 15, 15};
+  xQueueSend(msgOutQ, test, portMAX_DELAY);
   uint8_t msgOut[8];
+  #ifndef TEST_CANSEND
 	while (1) {
+  #endif
     xQueueReceive(msgOutQ, msgOut, portMAX_DELAY);
     g_msgOut[2] = msgOut[2];
     g_msgOut[3] = msgOut[3];
 		xSemaphoreTake(CAN_TX_Semaphore, portMAX_DELAY);
 		CAN_TX(0x123, msgOut);
+    xSemaphoreGive(CAN_TX_Semaphore);
+  #ifndef TEST_CANSEND
 	}
+  #endif
 }
 
 
@@ -484,6 +508,7 @@ void setup() {
 
   CAN_Init(false);
   CAN_RegisterRX_ISR(CAN_RX_ISR);
+  #ifndef DISABLE_THREADS
   TaskHandle_t candecode = NULL;
   xTaskCreate(
   CANDecodeTask,		/* Function that implements the task */
@@ -492,9 +517,9 @@ void setup() {
   NULL,			/* Parameter passed into the task */
   2,			/* Task priority */
   &candecode);	/* Pointer to store the task handle */
-
+  #endif
   CAN_RegisterTX_ISR(CAN_TX_ISR);
- 
+
   setCANFilter(0x123,0x7ff);
 
   CAN_Start();
@@ -504,6 +529,7 @@ void setup() {
 
   CAN_TX_Semaphore = xSemaphoreCreateCounting(3,3);
   //initialise the RTOS scheduler
+  #ifndef DISABLE_THREADS
   TaskHandle_t scanKeysHandle = NULL;
 
   xTaskCreate(
@@ -513,7 +539,8 @@ void setup() {
   NULL,			/* Parameter passed into the task */
   1,			/* Task priority */
   &scanKeysHandle );	/* Pointer to store the task handle */
-
+  #endif
+  #ifndef DISABLE_THREADS
   TaskHandle_t handshakehandle = NULL;
   xTaskCreate(
   handshaketask,		/* Function that implements the task */
@@ -531,6 +558,7 @@ void setup() {
   NULL,			/* Parameter passed into the task */
   1,			/* Task priority */
   &displayUpdateHandle );
+  #endif
 
   TaskHandle_t canSend = NULL;
   xTaskCreate(
@@ -540,12 +568,15 @@ void setup() {
   NULL,			/* Parameter passed into the task */
   1,			/* Task priority */
   &canSend );	/* Pointer to store the task handle */
+
   //Timer setup
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
+  #ifndef DISABLE_THREADS
   sampleTimer->setOverflow(22000, HERTZ_FORMAT);
   sampleTimer->attachInterrupt(sampleISR);
   sampleTimer->resume();
+  #endif
   //Set pin directions
   pinMode(RA0_PIN, OUTPUT);
   pinMode(RA1_PIN, OUTPUT);
@@ -573,9 +604,52 @@ void setup() {
   //Initialise UART
   Serial.begin(9600);
   Serial.println("Hello World");
-  gensin();
+  // gensin();
   g_initial_handshake = true;
+  #ifndef DISABLE_THREADS
   vTaskStartScheduler();
+  #endif
+  #ifdef TEST_SCANKEYS
+    uint32_t startTime = micros();
+    for (int iter = 0; iter < 32; iter++) {
+      // Serial.print("itteration: ");
+      // Serial.println(iter);
+      scanKeysTask(NULL);
+    }
+    Serial.println(micros()-startTime);
+    while(1);
+  #endif
+  #ifdef TEST_HANDSHAKE
+    uint32_t startTime = micros();
+    for (int iter = 0; iter < 32; iter++) {
+      // Serial.print("itteration: ");
+      // Serial.println(iter);
+      handshaketask(NULL);
+    }
+    Serial.println(micros()-startTime);
+    while(1);
+  #endif
+  #ifdef TEST_DISPLAYUPDATE
+    uint32_t startTime = micros();
+    for (int iter = 0; iter < 32; iter++) {
+      // Serial.print("itteration: ");
+      // Serial.println(iter);
+      displayUpdateTask(NULL);
+    }
+    Serial.println(micros()-startTime);
+    while(1);
+  #endif
+  #ifdef TEST_CANSEND
+    uint32_t startTime = micros();
+    for (int iter = 0; iter < 32; iter++) {
+      // Serial.print("itteration: ");
+      Serial.println(iter);
+      CANSendTask(NULL);
+
+    }
+    Serial.println(micros()-startTime);
+    while(1);
+  #endif
 }
 
 
