@@ -343,7 +343,7 @@ void handshaketask(void * pvParameters) {
     uint8_t l_HSEast = (((keyarraytmp[6]) & 0x08) >> 3);
     uint8_t l_HSWest = (((keyarraytmp[5]) & 0x08) >> 3);
     if(g_handshake_received == 1 || g_initial_handshake == 1){
-      if(l_HSWest == 1 && g_myPos ==0){ 
+      if(l_HSWest == 1 && g_myPos ==0 && l_HSEast == 0){ 
         bool l_outBits[7] = {true, true, true, true, true, false, false};
         memcpy(g_outBits, l_outBits, sizeof(l_outBits));
         l_myPos = max((int)g_myPos, g_handshake_msg[4] + 1);
