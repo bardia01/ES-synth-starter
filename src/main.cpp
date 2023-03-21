@@ -14,7 +14,8 @@ SemaphoreHandle_t handshakemutex;
 bool g_initial_handshake = false;
 volatile uint8_t g_handshake_msg[8] = {0};
 volatile bool g_handshake_received = 0;
-
+float filter_coeffs [] = {0.1, 0.2,0.3, 0.4, 0.5};
+float delay_filter [5] = {0, 0, 0, 0, 0};
 #ifndef receiver
   uint8_t MY_ID = 0; 
 #endif
@@ -77,6 +78,45 @@ volatile uint8_t uoctave_1 = 0;
 volatile uint8_t uoctave_2 = 0;
 
 volatile int8_t sinwave [1024];
+volatile float lfowave [4400];
+
+// double apply_fir_filter(double input)
+// {
+//   // Shift the delay line
+//   for (int i = 4; i > 0; i--)
+//   {
+//     delay_filter[i] = delay_filter[i-1];
+//   }
+
+//   // Add the new sample to the delay line
+//   delay_filter[0] = input;
+
+//   // Compute the output of the FIR filter
+//   double output = 0;
+//   for (int i = 0; i < 5; i++)
+//   {
+//     output += filter_coeffs[i] * delay_filter[i];
+//   }
+
+//   return output;
+// }
+
+
+// inline float getLFO(){
+  // if(4294967296.0 - lfoStepSize < lfoPhase) lfoPhase -= 4294967296.0;
+  // lfoPhase += lfoStepSize;
+  // //Serial.println(lfoPhase);
+  // return (sin(2*3.14159265358979323846*lfoPhase / 4294967296.0)+1)/2;
+//   //return 1;
+// }
+void genflo(){
+  const float lfoStepSize = 976128.9309;
+  volatile float lfoPhase = 0;
+  for(uint32_t i = 0; i< 4400; i++){
+    lfowave[i] = ((sin(2*3.14159265358979323846*lfoPhase / 4294967296.0)+1)/2);
+    lfoPhase += lfoStepSize;
+  }
+}
 
 void gensin(){
   float step = 2*3.14159265358979323846 / 1024;
@@ -160,12 +200,14 @@ uint32_t ID;
 uint8_t RX_Message[8]={0};
 
 uint16_t count=0;
+uint32_t i =0;
 
 void sampleISR() {
   count=0;
   static int32_t phaseAccLO[12] = {0};
   static int32_t phaseAccUO[12] = {0};
   static int32_t phaseAccR[12] = {0};
+  if(i==4400) i=0;
   int32_t cVout = 0;
   // LOWER OCTAVE
   for(int i=0; i<8;i++){
@@ -254,11 +296,12 @@ void sampleISR() {
       cVout += RVout[i+8];
     }
   }
-
-
-  cVout = max(-128, min(127, (int)(cVout/count)));
-  frund = cVout;
+  //Serial.println(lfowave[i]);
+  cVout = max(-128, min(127, (int)(cVout*lfowave[i]/count)));
+  frund = cVout; 
+  
   analogWrite(OUTR_PIN, (cVout + 128));
+  i++;
 }
 
 volatile bool press = 0;
@@ -296,7 +339,12 @@ void handshaketask(void * pvParameters) {
     uint8_t l_HSEast = (((keyarraytmp[6]) & 0x08) >> 3);
     uint8_t l_HSWest = (((keyarraytmp[5]) & 0x08) >> 3);
     if(g_handshake_received == 1 || g_initial_handshake == 1){
-      if(l_HSWest == 1 && g_myPos ==0){ 
+      if(l_HSWest == 1 && l_HSEast == 1){
+        l_myPos = 0;
+         __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
+        g_initial_handshake = false;
+      }
+      else if(l_HSWest == 1 && g_myPos ==0){ 
         bool l_outBits[7] = {true, true, true, true, true, false, false};
         memcpy(g_outBits, l_outBits, sizeof(l_outBits));
         l_myPos = max((int)g_myPos, g_handshake_msg[4] + 1);
@@ -342,7 +390,6 @@ void scanKeysTask(void * pvParameters) {
     memcpy(keyArrayCopy,(void*)keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
       uint16_t keys_pressed_copy = 0;
-      xSemaphoreGive(keyArrayMutex);
       for(uint8_t i = 0; i < 3; i++){
         for(uint8_t j = 0; j < 4; j++)
         {
@@ -574,6 +621,7 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Hello World");
   gensin();
+  genflo();
   g_initial_handshake = true;
   vTaskStartScheduler();
 }
