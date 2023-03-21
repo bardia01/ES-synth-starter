@@ -3,11 +3,17 @@
 #include <STM32FreeRTOS.h>
 #include <string.h>
 #include <ES_CAN.h>
-#define receiver
-// RECEIVER
+#include <sinwave.h>
+
+#define SAMPLE_BUFFER_SIZE 128
+
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
+SemaphoreHandle_t sampleBufferSemaphore;
+#define receiver
+// RECEIVER
+
 SemaphoreHandle_t handshakemutex;
 
 
@@ -58,6 +64,17 @@ volatile bool g_handshake_received = 0;
 
 //Display driver object
 U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
+
+// void gensin(){
+//   float step = 2*3.14159265358979323846 / 1024;
+//   float phase = 0;
+//   for(uint32_t i = 0; i<1024; i++){
+//     //Serial.println(sin(phase));
+//     sinwave[i] = (int)(127.0*sin(phase));
+//     //Serial.println(sinwave[i]);
+//     phase += step;
+//   }
+// }
 
 //Function to set outputs using key matrix
 void setOutMuxBit(const uint8_t bitIdx, const bool value) {
@@ -149,15 +166,18 @@ volatile uint8_t g_HSWest = 0;
 
 
 
-
-
 // Add a local variable to store last cvout then print that
 int32_t frund = 0;
 uint32_t ID;
 uint8_t RX_Message[8]={0};
 
-uint16_t count=0;
-inline void create_signal(int32_t &cVout, uint16_t &count, int32_t vout_arr[], int32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+uint8_t sampleBuffer0[SAMPLE_BUFFER_SIZE];
+uint8_t sampleBuffer1[SAMPLE_BUFFER_SIZE];
+volatile bool writeBuffer1 = false;
+
+uint8_t g_count=10;
+volatile bool sinsound = 0;
+inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[], int32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
@@ -167,7 +187,7 @@ inline void create_signal(int32_t &cVout, uint16_t &count, int32_t vout_arr[], i
       else{
         phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
       }
-      vout_arr[i] = (phase_arr[i] >> 24); 
+      vout_arr[i] = (phase_arr[i] >> 24 - 128); 
       vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
       cVout += vout_arr[i];
     }
@@ -181,28 +201,119 @@ inline void create_signal(int32_t &cVout, uint16_t &count, int32_t vout_arr[], i
       else{
         phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
       }
-      vout_arr[i+8] = (phase_arr[i+8] >> 24); 
+      vout_arr[i+8] = (phase_arr[i+8] >> 24) - 128; 
       vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
       cVout += vout_arr[i+8];
     }
   }
 }
-
+inline void create_square(int32_t &cVout, uint16_t &count, int32_t vout_arr[], int32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+  for(int i=0; i<8;i++){
+    if((keyint_0 & (1<<i)) != 0){ 
+      count++;
+      if(knob2.knobrotation + octave > 4){
+        phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
+      }
+      else{
+        phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
+      }
+      int32_t d = (phase_arr[i] >> 24) - 128; 
+      vout_arr[i] = (d>=0) ? 127 : -128;
+      vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
+      cVout += vout_arr[i];
+    }
+  }
+  for(int i=0; i<4;i++){
+    if((keyint_1 & (1<<i)) != 0){
+      count++;
+      if(knob2.knobrotation + octave > 4){
+        phase_arr[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + octave);
+      }
+      else{
+        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
+      }
+      int32_t d = (phase_arr[i+8] >> 24) - 128; 
+      vout_arr[i+8] = (d>=0) ? 127 : -128;
+      vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
+      cVout += vout_arr[i+8];
+    }
+  }
+}
+inline void create_sin(int32_t &cVout, uint16_t &count, int32_t vout_arr[], int32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+  for(int i=0; i<8;i++){
+    if((keyint_0 & (1<<i)) != 0){ 
+      count++;
+      if(knob2.knobrotation + octave > 4){
+        phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
+      }
+      else{
+        phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
+      }
+      int32_t d = (phase_arr[i] >> 22); 
+      vout_arr[i] = sinwave[d];
+      vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
+      cVout += vout_arr[i];
+    }
+  }
+  for(int i=0; i<4;i++){
+    if((keyint_1 & (1<<i)) != 0){
+      count++;
+      if(knob2.knobrotation + octave > 4){
+        phase_arr[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + octave);
+      }
+      else{
+        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
+      }
+      int32_t d = phase_arr[i+8] >> 22; 
+      vout_arr[i+8] = sinwave[d];
+      vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
+      cVout += vout_arr[i+8];
+    }
+  }
+}
+inline void create_triangle(int32_t &cVout, uint16_t &count, int32_t vout_arr[], int32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+  for(int i=0; i<8;i++){
+    if((keyint_0 & (1<<i)) != 0){ 
+      count++;
+      if(knob2.knobrotation + octave > 4){
+        phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
+      }
+      else{
+        phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
+      }
+      int32_t d = (phase_arr[i] >> 24) - 128; 
+      vout_arr[i] = (d < 0 ) ? (d << 1) + 127 : 127 - (d << 1);
+      vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
+      cVout += vout_arr[i];
+    }
+  }
+  for(int i=0; i<4;i++){
+    if((keyint_1 & (1<<i)) != 0){
+      count++;
+      if(knob2.knobrotation + octave > 4){
+        phase_arr[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + octave);
+      }
+      else{
+        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
+      }
+      int32_t d = (phase_arr[i+8] >> 24) - 128; 
+      vout_arr[i+8] = (d < 0 ) ? (d << 1) + 127 : 127 - (d << 1);
+      vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
+      cVout += vout_arr[i+8];
+    }
+  }
+}
 void sampleISR() {
-  count=0;
-  static int32_t phaseAccLO[12] = {0};
-  static int32_t phaseAccUO[12] = {0};
-  static int32_t phaseAccR[12] = {0};
-  int32_t cVout = 0;
-  int32_t RVout[12] = {0};
-  int32_t LVout[12] = {0};
-  int32_t UVout[12] = {0};
-  create_signal(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, -1);
-  create_signal(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
-  create_signal(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
-  cVout = max(-128, min(127, (int)(cVout/count)));
-  frund = cVout;
-  analogWrite(OUTR_PIN, (cVout + 128));
+  static uint32_t readCtr = 0;
+    if (readCtr == SAMPLE_BUFFER_SIZE){
+    readCtr = 0;
+    writeBuffer1 = !writeBuffer1;
+    xSemaphoreGiveFromISR(sampleBufferSemaphore, NULL);
+  }
+  if (writeBuffer1)
+    analogWrite(OUTR_PIN, sampleBuffer0[readCtr++]);
+  else
+    analogWrite(OUTR_PIN, sampleBuffer1[readCtr++]);
 }
 
 volatile bool press = 0;
@@ -215,6 +326,7 @@ void writetx(uint8_t totx[], bool is_handshake=0){
   totx[2] = press?g_keys_pressed_p1:totx[2];
   totx[3] = press?g_keys_pressed_p2:totx[3];
   totx[4] = g_myPos;
+  totx[5] = knob1.knobrotation;
 }
 
 bool g_outBits[7] = {true, true, true, true, true, true, true};
@@ -371,10 +483,66 @@ void CANSendTask(void * pvParameters){
 	}
 }
 
+void sampleBufferTask(void* pvParameters){
+  while(1){
+	xSemaphoreTake(sampleBufferSemaphore, portMAX_DELAY);
+	for (uint32_t writeCtr = 0; writeCtr < SAMPLE_BUFFER_SIZE; writeCtr++) {
+    
+    // static uint32_t phaseAcc[12] = {0};
+    static int32_t phaseAccLO[12] = {0};
+    static int32_t phaseAccUO[12] = {0};
+    static int32_t phaseAccR[12] = {0};
+    int32_t cVout = 0;
+    int32_t RVout[12] = {0};
+    int32_t LVout[12] = {0};
+    int32_t UVout[12] = {0};
+    uint16_t count=0;
+    int32_t cVout = 0;
+    // uint8_t RX_Message[8]={0};
+    // xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
+    // memcpy(RX_Message, RX_Message, 8);
+    // xSemaphoreGive(rxmsgMutex);
 
+    if(RX_Message[5] == 8){
+      //sawtooth
+      //time to try lfo sine wave modulation ting
+      create_sawtooth(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, -1);
+      create_sawtooth(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
+      create_sawtooth(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
+    }
+    else if(RX_Message[5] ==7){
+      // square wave
+      create_square(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, -1);
+      create_square(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
+      create_square(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
+    }
+    else if(RX_Message[5] ==6){
+      //sinwave
+      create_sin(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, -1);
+      create_sin(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
+      create_sin(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
+    }
+    else if(RX_Message[5] ==5){
+      //triangle wave
+      create_triangle(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, -1);
+      create_triangle(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
+      create_triangle(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
+    }
+    cVout = (float)cVout / (float)count;
+    g_count = count;
+    cVout = max(-128, min(127, (int)cVout));
+    frund = RX_Message[5];
+		if (writeBuffer1)
+			sampleBuffer1[writeCtr] = cVout + 128;
+		else
+			sampleBuffer0[writeCtr] = cVout + 128;
+	}
+}
+}
 
-
-void CANDecodeTask(void * pvParameters){
+void CANDecodeTask(void * pvParameters){ 
+  bool local_octave_up;;
+  uint32_t localCurrentStepSize = 0;
   uint8_t localRX_Message[8];
   uint8_t l_my_id;
   const TickType_t xFrequency = 30/portTICK_PERIOD_MS;
@@ -389,12 +557,12 @@ void CANDecodeTask(void * pvParameters){
     }
     else{
       memcpy(RX_Message, localRX_Message, sizeof RX_Message);
-      if(localRX_Message[4] == 2){
+      if(localRX_Message[5] == 2){
         __atomic_store_n(&g_keys_pressed_p1, localRX_Message[2], __ATOMIC_RELAXED);
         __atomic_store_n(&g_keys_pressed_p2, localRX_Message[3], __ATOMIC_RELAXED);
         // Serial.print(g_keys_pressed_p1, DEC);
       }
-      else if(localRX_Message[4] == 3){
+      else if(localRX_Message[5] == 3){
         __atomic_store_n(&uoctave_1, localRX_Message[2], __ATOMIC_RELAXED);
         __atomic_store_n(&uoctave_2, localRX_Message[3], __ATOMIC_RELAXED);
       }
@@ -421,6 +589,8 @@ void CAN_TX_ISR (void) {
 void setup() {
   // put your setup code here, to run once:
   //initialise queue
+  sampleBufferSemaphore = xSemaphoreCreateBinary();
+  xSemaphoreGive(sampleBufferSemaphore);
   msgInQ = xQueueCreate(36,8);
   msgOutQ = xQueueCreate(36,8);
   //semaphore
@@ -454,7 +624,7 @@ void setup() {
   "scanKeys",		/* Text name for the task */
   64,      		/* Stack size in words, not bytes */
   NULL,			/* Parameter passed into the task */
-  1,			/* Task priority */
+  6,			/* Task priority */
   &scanKeysHandle );	/* Pointer to store the task handle */
 
   TaskHandle_t handshakehandle = NULL;
@@ -472,17 +642,27 @@ void setup() {
   "displayUpdate",		/* Text name for the task */
   256,      		/* Stack size in words, not bytes */
   NULL,			/* Parameter passed into the task */
-  1,			/* Task priority */
-  &displayUpdateHandle );
+  2,			/* Task priority */
+  &scanKeysHandle );
 
   TaskHandle_t canSend = NULL;
   xTaskCreate(
-  CANSendTask,		/* Function that implements the task */
-  "CANSend",		/* Text name for the task */
-  64,      		/* Stack size in words, not bytes */
-  NULL,			/* Parameter passed into the task */
-  1,			/* Task priority */
-  &canSend );	/* Pointer to store the task handle */
+    CANSendTask,		/* Function that implements the task */
+    "CANSend",		/* Text name for the task */
+    64,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    3,			/* Task priority */
+    &canSend );	/* Pointer to store the task handle */
+
+  TaskHandle_t sampleBuffer = NULL;
+  xTaskCreate(
+    sampleBufferTask,		/* Function that implements the tsask */
+    "sampleBuffer",		/* Text name for the task */
+    256,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    10,			/* Task priority */
+    &sampleBuffer );	/* Pointer to store the task handle */
+
   //Timer setup
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
@@ -516,7 +696,8 @@ void setup() {
   //Initialise UARTF
   Serial.begin(9600);
   Serial.println("Hello World");
-  gensin();
+  //gensin();
+
   g_initial_handshake = true;
   vTaskStartScheduler();
 }
