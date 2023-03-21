@@ -147,10 +147,7 @@ volatile uint8_t g_keys_pressed_p2;
 volatile uint8_t g_HSEast = 0;
 volatile uint8_t g_HSWest = 0;
 
-volatile int32_t cVout = 0;
-volatile int32_t RVout[12] = {0};
-volatile int32_t LVout[12] = {0};
-volatile int32_t UVout[12] = {0};
+
 
 
 
@@ -160,6 +157,36 @@ uint32_t ID;
 uint8_t RX_Message[8]={0};
 
 uint16_t count=0;
+inline void create_signal(int32_t &cVout, uint16_t &count, int32_t vout_arr[], int32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+  for(int i=0; i<8;i++){
+    if((keyint_0 & (1<<i)) != 0){ 
+      count++;
+      if(knob2.knobrotation + octave > 4){
+        phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
+      }
+      else{
+        phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
+      }
+      vout_arr[i] = (phase_arr[i] >> 24); 
+      vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
+      cVout += vout_arr[i];
+    }
+  }
+  for(int i=0; i<4;i++){
+    if((keyint_1 & (1<<i)) != 0){
+      count++;
+      if(knob2.knobrotation + octave > 4){
+        phase_arr[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + octave);
+      }
+      else{
+        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
+      }
+      vout_arr[i+8] = (phase_arr[i+8] >> 24); 
+      vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
+      cVout += vout_arr[i+8];
+    }
+  }
+}
 
 void sampleISR() {
   count=0;
@@ -167,95 +194,12 @@ void sampleISR() {
   static int32_t phaseAccUO[12] = {0};
   static int32_t phaseAccR[12] = {0};
   int32_t cVout = 0;
-  // LOWER OCTAVE
-  for(int i=0; i<8;i++){
-    if((loctave_1 & (1<<i)) != 0){
-      count++; 
-      if(knob2.knobrotation - 1 > 4){
-        phaseAccLO[i] += stepSizes[i] << (knob2.knobrotation - 4 - 1);
-      }
-      else{
-        phaseAccLO[i] += stepSizes[i] >> (1 + 4 - knob2.knobrotation);
-      }
-      LVout[i] = (phaseAccLO[i] >> 24); 
-      LVout[i] = LVout[i] >> (8 - knob3.knobrotation);
-      cVout += LVout[i];
-    }
-  }
-  for(int i=0; i<4;i++){
-    if((loctave_2 & (1<<i)) != 0){ 
-      count++;
-      if(knob2.knobrotation - 1 > 4){
-        phaseAccLO[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 - 1);
-      }
-      else{
-        phaseAccLO[i+8] += stepSizes[i+8] >> (1 + 4 - knob2.knobrotation);
-      }
-      LVout[i+8] = (phaseAccLO[i+8] >> 24); 
-      LVout[i+8] = LVout[i+8] >> (8 - knob3.knobrotation);
-      cVout += LVout[i+8];
-    }
-  }
- // UPPER OCTAVE
-  for(int i=0; i<8;i++){
-    if((uoctave_1 & (1<<i)) != 0){ 
-      count++;
-      if(knob2.knobrotation + 1 > 4){
-        phaseAccUO[i] += stepSizes[i] << (knob2.knobrotation - 4 + 1);
-      }
-      else{
-        phaseAccUO[i] += stepSizes[i] >> (-1 + 4 - knob2.knobrotation);
-      }
-      UVout[i] = (phaseAccUO[i] >> 24); 
-      UVout[i] = UVout[i] >> (8 - knob3.knobrotation);
-      cVout += UVout[i];
-    }
-  }
-  for(int i=0; i<4;i++){
-    if((uoctave_2 & (1<<i)) != 0){
-      count++;
-      if(knob2.knobrotation + 1 > 4){
-        phaseAccUO[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + 1);
-      }
-      else{
-        phaseAccUO[i+8] += stepSizes[i+8] >> (-1 + 4 - knob2.knobrotation);
-      }
-      UVout[i+8] = (phaseAccUO[i+8] >> 24); 
-      UVout[i+8] = UVout[i+8] >> (8 - knob3.knobrotation);
-      cVout += UVout[i+8];
-    }
-  }
-  // MIDDLE OCTAVE
-  for(int i=0; i<8;i++){
-    if((g_keys_pressed_p1 & (1<<i)) != 0){ 
-      count++;
-      if(knob2.knobrotation > 4){
-        phaseAccR[i] += stepSizes[i] << (knob2.knobrotation - 4);
-      }
-      else{
-        phaseAccR[i] += stepSizes[i] >> (4 - knob2.knobrotation);
-      }
-      RVout[i] = (phaseAccR[i] >> 24); 
-      RVout[i] = RVout[i] >> (8 - knob3.knobrotation);
-      cVout += RVout[i];
-    }
-  }
-  for(int i=0; i<4;i++){
-    if((g_keys_pressed_p2 & (1<<i)) != 0){ 
-      count++;
-      if(knob2.knobrotation > 4){
-        phaseAccR[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4);
-      }
-      else{
-        phaseAccR[i+8] += stepSizes[i+8] >> (4 - knob2.knobrotation);
-      }
-      RVout[i+8] = (phaseAccR[i+8] >> 24); 
-      RVout[i+8] = RVout[i+8] >> (8 - knob3.knobrotation);
-      cVout += RVout[i+8];
-    }
-  }
-
-
+  int32_t RVout[12] = {0};
+  int32_t LVout[12] = {0};
+  int32_t UVout[12] = {0};
+  create_signal(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, -1);
+  create_signal(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
+  create_signal(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
   cVout = max(-128, min(127, (int)(cVout/count)));
   frund = cVout;
   analogWrite(OUTR_PIN, (cVout + 128));
@@ -358,8 +302,7 @@ void scanKeysTask(void * pvParameters) {
       uint8_t keys_pressed_p2 = (keys_pressed_copy >> 8) & 0xff;
       __atomic_store(&loctave_1, &keys_pressed_p1, __ATOMIC_RELAXED);
       __atomic_store(&loctave_2, &keys_pressed_p2, __ATOMIC_RELAXED);
-      // Serial.println(keys_pressed_p2, BIN);
-
+      Serial.print(loctave_1, DEC);
       writetx(TX_Message);
       
       __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
@@ -449,13 +392,13 @@ void CANDecodeTask(void * pvParameters){
       if(localRX_Message[4] == 2){
         __atomic_store_n(&g_keys_pressed_p1, localRX_Message[2], __ATOMIC_RELAXED);
         __atomic_store_n(&g_keys_pressed_p2, localRX_Message[3], __ATOMIC_RELAXED);
+        // Serial.print(g_keys_pressed_p1, DEC);
       }
       else if(localRX_Message[4] == 3){
         __atomic_store_n(&uoctave_1, localRX_Message[2], __ATOMIC_RELAXED);
         __atomic_store_n(&uoctave_2, localRX_Message[3], __ATOMIC_RELAXED);
       }
     }
-    Serial.print(uoctave_2);
     xSemaphoreGive(handshakemutex);
     xSemaphoreGive(rxmsgMutex);
   }
@@ -570,7 +513,7 @@ void setup() {
   u8g2.begin();
   setOutMuxBit(DEN_BIT, HIGH);  //Enable display power supply
 
-  //Initialise UART
+  //Initialise UARTF
   Serial.begin(9600);
   Serial.println("Hello World");
   gensin();
