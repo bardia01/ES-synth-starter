@@ -9,6 +9,11 @@
 #define SAMPLE_BUFFER_SIZE 128
 #define LFO_STEP_SIZE 976128.9309
 #define JOYSTICK_MAX 920
+#define JOYSTICK_HYSTERISIS_THRESHOLD 200
+#define JOYSTICK_HYSTERISIS_THRESHOLD_SMALL 60
+
+uint32_t joystick_neutral_x = 0;
+uint32_t joystick_neutral_y = 0;
 
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t rxmsgMutex;
@@ -178,10 +183,11 @@ uint8_t sampleBuffer0[SAMPLE_BUFFER_SIZE];
 uint8_t sampleBuffer1[SAMPLE_BUFFER_SIZE];
 volatile bool writeBuffer1 = false;
 
-uint8_t g_count=10;
 
 volatile uint32_t g_joyx = 0;
 volatile uint32_t g_joyy = 0;
+volatile uint32_t g_joyx_prev = 0;
+volatile uint32_t g_joyy_prev = 0;
 
 volatile bool sinsound = 0;
 inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
@@ -391,6 +397,11 @@ void handshaketask(void * pvParameters) {
     xSemaphoreGive(handshakemutex);
   }
 }
+
+
+int8_t g_toggle_joyx = 0;
+int8_t g_toggle_joyy = 0;
+
 /*
               X    Y
 FULL LEFT =  926   ~479
@@ -400,14 +411,41 @@ FULL DOWN = ~479    890
 
 */
 void joysticktask(void * pvParameters){
-  const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 300/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  static int8_t l_toggle_joyx = 0;
+  static int8_t l_toggle_joyy = 0;
   while(1){
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    // Store prev values 
+    __atomic_store(&g_joyx_prev, &g_joyx, __ATOMIC_RELAXED);
+    __atomic_store(&g_joyy_prev, &g_joyy, __ATOMIC_RELAXED);
+
     // Read joystick values
-      uint32_t l_joyx = analogRead(JOYX_PIN);
-      uint32_t l_joyy = analogRead(JOYY_PIN);
-      __atomic_store(&g_joyx, &l_joyx, __ATOMIC_RELAXED);
-      __atomic_store(&g_joyy, &l_joyy, __ATOMIC_RELAXED);
+    uint32_t l_joyx = analogRead(JOYX_PIN);
+    uint32_t l_joyy = analogRead(JOYY_PIN);
+    __atomic_store(&g_joyx, &l_joyx, __ATOMIC_RELAXED);
+    __atomic_store(&g_joyy, &l_joyy, __ATOMIC_RELAXED);
+
+    // Is the joystick not at the centre?
+    bool active = (g_joyx < joystick_neutral_x - JOYSTICK_HYSTERISIS_THRESHOLD) || (g_joyx > joystick_neutral_x + JOYSTICK_HYSTERISIS_THRESHOLD)
+                || (g_joyy < joystick_neutral_y - JOYSTICK_HYSTERISIS_THRESHOLD) || (g_joyy > joystick_neutral_y + JOYSTICK_HYSTERISIS_THRESHOLD);
+  
+    
+    if(active && (g_toggle_joyx == 0)){
+      //joy stick has moved right
+      if(g_joyx < g_joyx_prev - JOYSTICK_HYSTERISIS_THRESHOLD_SMALL){
+        l_toggle_joyx = 1; // 1 indicates right
+      }
+      //joy stick has moved left
+      else if(g_joyx > g_joyx_prev + JOYSTICK_HYSTERISIS_THRESHOLD_SMALL){
+        l_toggle_joyx = -1; // -1 indicates left
+      }
+    }
+    else{
+      l_toggle_joyx = 0;
+    }
+    __atomic_store(&g_toggle_joyx, &l_toggle_joyx, __ATOMIC_RELAXED);
   }
 }
 
@@ -513,7 +551,9 @@ void displayUpdateTask(void * pvParameters){
     u8g2.drawStr(5,30, "Octave:");
     u8g2.setCursor(50,30);
     u8g2.print(knob2.knobrotation,DEC); 
-    u8g2.setCursor(70,30);
+    u8g2.setCursor(65,30);
+    u8g2.print(g_toggle_joyx, DEC);
+    u8g2.setCursor(80,30);
     u8g2.print(knob0.knobrotation,DEC); 
 
     u8g2.sendBuffer();          // transfer internal memory to the display
@@ -535,6 +575,22 @@ void CANSendTask(void * pvParameters){
 
 volatile uint16_t lfo_index = 0;
 
+constexpr float gaussian_kernel[7] = {0.005977, 0.060598, 0.241732, 0.492446, 0.241732, 0.060598, 0.005977};
+inline int32_t fir_filter(int32_t input){
+  static int32_t fir_buffer[7] = {0};
+  int32_t output = 0;
+  for(int i = 6; i > 0; i--){
+    fir_buffer[i] = fir_buffer[i-1];
+  }
+  fir_buffer[0] = input;
+  for(uint8_t i = 0; i < 7; i++){
+    output += fir_buffer[i] * gaussian_kernel[i];
+  }
+  return output;
+}
+
+
+
 void sampleBufferTask(void* pvParameters){
   // const TickType_t xFrequency = 50/portTICK_PERIOD_MS;
   // TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -546,11 +602,13 @@ void sampleBufferTask(void* pvParameters){
   int32_t UVout[12] = {0};
   uint32_t js_phase = 0;
   int32_t js_vout = 0;  
+  bool alone;
   while(1){
     // vTaskDelayUntil( &xLastWakeTime, xFrequency );
+    alone = (g_myPos == 0);
     xSemaphoreTake(sampleBufferSemaphore, portMAX_DELAY);
     for (uint32_t writeCtr = 0; writeCtr < SAMPLE_BUFFER_SIZE; writeCtr++) {
-      if(lfo_index == 4400) lfo_index = 0;
+      if(lfo_index > 4400) lfo_index = 0;
       // Serial.println("got here\n");
       int32_t cVout = 0;
       uint16_t count=0;
@@ -562,36 +620,51 @@ void sampleBufferTask(void* pvParameters){
       if(knob1.knobrotation == 4){
         //sawtooth
         //time to try lfo sine wave modulation ting
-        create_sawtooth(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, -1);
+        create_sawtooth(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
         create_sawtooth(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
         create_sawtooth(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
       }
       else if(knob1.knobrotation == 5){
         // square wave
-        create_square(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, -1);
+        create_square(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
         create_square(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
         create_square(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
       }
       else if(knob1.knobrotation == 6){
         //sinwave
-      create_sin(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, -1);
+      create_sin(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
       create_sin(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
       create_sin(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
       }
       else if(knob1.knobrotation == 7){
         //triangle wave
-      create_triangle(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, -1);
+      create_triangle(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
       create_triangle(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
       create_triangle(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
       }
-      else if(knob1.knobrotation == 3){
-        create_custom(cVout, count, js_vout, js_phase);
-      }
+      // else if(knob1.knobrotation == 3){
+      //   create_custom(cVout, count, js_vout, js_phase);
+      // }
+      
+      // Dynamic scaling of cVout, appropriate since now in a task rather than the ISR
       cVout = (float)cVout / (float)count;
-      g_count = count;
-      float multiplier = (knob0.knobrotation > 4) ? lfowave[lfo_index++] : 1;
+
+      // Filter the scaled cVout and return the result back into the same variable
+      cVout = fir_filter(cVout);
+
+      // Apply the LFO AM modulation if the knob is not on 0
+      float multiplier = (knob0.knobrotation) ? lfowave[lfo_index] : 1;
+
+      // Increment the LFO index by the knob rotation value
+      lfo_index += (knob0.knobrotation);
+
+      // Apply the multiplier to the cVout and clamp the result to the 8-bit range
       cVout = max(-128, min(127, (int)(cVout*multiplier)));
+
+      // frund is your friend that helps you debuff
       frund = cVout;
+
+      // Write the filtered and clamped result to the output buffer (normalise the range)
       if (writeBuffer1)
         sampleBuffer1[writeCtr] = cVout + 128;
       else
@@ -764,7 +837,8 @@ void setup() {
   Serial.println("Hello World");
   //gensin();
   genflo();
-
+  joystick_neutral_x = analogRead(JOYX_PIN);
+  joystick_neutral_y = analogRead(JOYY_PIN);
   g_initial_handshake = true;
   vTaskStartScheduler();
 }
