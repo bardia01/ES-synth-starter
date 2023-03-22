@@ -154,8 +154,8 @@ class Knob {
 
 Knob knob3(8, 0);
 Knob knob2(8, 0);
-Knob knob1(8,0);
-Knob knob0(8,0);
+Knob knob1(3,0);
+Knob knob0(3,0);
 
 volatile uint8_t g_keys_pressed_p1;
 volatile uint8_t g_keys_pressed_p2;
@@ -392,7 +392,7 @@ void handshaketask(void * pvParameters) {
 
 int8_t g_toggle_joyx = 0;
 int8_t g_toggle_joyy = 0;
-
+uint8_t g_control_from_joystick = 0;
 /*
               X    Y
 FULL LEFT =  926   ~479
@@ -406,6 +406,7 @@ void joysticktask(void * pvParameters){
   TickType_t xLastWakeTime = xTaskGetTickCount();
   static int8_t l_toggle_joyx = 0;
   static int8_t l_toggle_joyy = 0;
+  static uint8_t l_control_from_joystick = 0;
   while(1){
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
     // Store prev values 
@@ -437,6 +438,17 @@ void joysticktask(void * pvParameters){
       l_toggle_joyx = 0;
     }
     __atomic_store(&g_toggle_joyx, &l_toggle_joyx, __ATOMIC_RELAXED);
+    // l_control_from_joystick = min(3, max(0, int(g_control_from_joystick)+l_toggle_joyx));
+    if(l_control_from_joystick + l_toggle_joyx < 0){
+      l_control_from_joystick = 3;
+    }
+    else if(l_control_from_joystick + l_toggle_joyx > 3){
+      l_control_from_joystick = 0;
+    }
+    else{
+      l_control_from_joystick += l_toggle_joyx;
+    }
+    __atomic_store(&g_control_from_joystick, &l_control_from_joystick, __ATOMIC_RELAXED);
   }
 }
 
@@ -522,7 +534,7 @@ void displayUpdateTask(void * pvParameters){
     u8g2.setCursor(120,10);
     u8g2.print(g_myPos, DEC);
     #ifdef receiver
-      u8g2.drawStr(92,30, "RCVR");
+      u8g2.drawStr(120,30, "R");
     #endif
     u8g2.drawStr(5,10, "Note:");
     if(loctave_1 || loctave_2) u8g2.drawStr(30,10,keyMap[currentStepSize].c_str());
@@ -534,17 +546,17 @@ void displayUpdateTask(void * pvParameters){
     u8g2.setCursor(50,20);
     u8g2.print(knob3.knobrotation,DEC);
     std::string wave_type;
-    if(knob1.knobrotation == 6) wave_type = "Sine";
-    else if(knob1.knobrotation == 4) wave_type = "Sawtooth";
-    else if(knob1.knobrotation == 5) wave_type = "Square";
-    else if(knob1.knobrotation == 7) wave_type = "Triangle";
+    if(g_control_from_joystick == 2) wave_type = "Sine";
+    else if(g_control_from_joystick == 0) wave_type = "Sawtooth";
+    else if(g_control_from_joystick == 1) wave_type = "Square";
+    else if(g_control_from_joystick == 3) wave_type = "Triangle";
     u8g2.drawStr(65,20, wave_type.c_str()); 
     u8g2.drawStr(5,30, "Octave:");
-    u8g2.setCursor(50,30);
-    u8g2.print(knob2.knobrotation,DEC); 
-    u8g2.setCursor(65,30);
-    u8g2.print(g_toggle_joyx, DEC);
-    u8g2.setCursor(80,30);
+    u8g2.setCursor(42,30);
+    u8g2.print(knob2.knobrotation,DEC);
+    
+    u8g2.drawStr(52,30, "AM LFO:");
+    u8g2.setCursor(105,30);
     u8g2.print(knob0.knobrotation,DEC); 
 
     u8g2.sendBuffer();          // transfer internal memory to the display
@@ -567,19 +579,31 @@ void CANSendTask(void * pvParameters){
 volatile uint16_t lfo_index = 0;
 
 constexpr float gaussian_kernel[7] = {0.005977, 0.060598, 0.241732, 0.492446, 0.241732, 0.060598, 0.005977};
-inline int32_t fir_filter(int32_t input){
-  static int32_t fir_buffer[7] = {0};
+constexpr float gaussian_kernel_big[21] = {0.0005,	0.0015,	0.0039,	0.0089,	0.0183,	0.0334,	0.0549,	0.0807,	0.1063,	0.1253,	0.1324,	0.1253,	0.1063,	0.0807,	0.0549,	0.0334,	0.0183,	0.0089,	0.0039,	0.0015,	0.0005};
+inline int32_t gauss_filter(int32_t input){
+  static int32_t fir_buffer[21] = {0};
   int32_t output = 0;
-  for(int i = 6; i > 0; i--){
+  for(uint8_t i = 20; i > 0; i--){
     fir_buffer[i] = fir_buffer[i-1];
   }
   fir_buffer[0] = input;
-  for(uint8_t i = 0; i < 7; i++){
-    output += fir_buffer[i] * gaussian_kernel[i];
+  for(uint8_t i = 0; i < 21; i++){
+    output += fir_buffer[i] * gaussian_kernel_big[i];
   }
   return output;
 }
 
+inline int32_t avg_filter(int32_t input){
+  static int32_t lpf_buffer[4] = {0};
+  int32_t output = 0;
+  static uint8_t count = 0;
+  lpf_buffer[count] = input;
+  count = (count+1) & 0b11; 
+  for(uint8_t i = 0; i<4; i++){
+    output += lpf_buffer[i] >> 2;
+  }
+  return output;
+}
 
 
 void sampleBufferTask(void* pvParameters){
@@ -608,26 +632,26 @@ void sampleBufferTask(void* pvParameters){
       // memcpy(RX_Message, RX_Message, 8);
       // xSemaphoreGive(rxmsgMutex);
 
-      if(knob1.knobrotation == 4){
+      if(g_control_from_joystick == 0){
         //sawtooth
         //time to try lfo sine wave modulation ting
         create_sawtooth(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
         create_sawtooth(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
         create_sawtooth(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
       }
-      else if(knob1.knobrotation == 5){
+      else if(g_control_from_joystick == 1){
         // square wave
         create_square(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
         create_square(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
         create_square(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
       }
-      else if(knob1.knobrotation == 6){
+      else if(g_control_from_joystick == 2){
         //sinwave
       create_sin(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
       create_sin(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
       create_sin(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
       }
-      else if(knob1.knobrotation == 7){
+      else if(g_control_from_joystick == 3){
         //triangle wave
       create_triangle(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
       create_triangle(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
@@ -641,7 +665,7 @@ void sampleBufferTask(void* pvParameters){
       cVout = (float)cVout / (float)count;
 
       // Filter the scaled cVout and return the result back into the same variable
-      cVout = fir_filter(cVout);
+      cVout = avg_filter(cVout);
 
       // Apply the LFO AM modulation if the knob is not on 0
       float multiplier = (knob0.knobrotation) ? lfowave[lfo_index] : 1;
@@ -826,14 +850,11 @@ void setup() {
   //Initialise UARTF
   Serial.begin(9600);
   Serial.println("Hello World");
-  //gensin();
-  genflo();
   joystick_neutral_x = analogRead(JOYX_PIN);
   joystick_neutral_y = analogRead(JOYY_PIN);
   g_initial_handshake = true;
   vTaskStartScheduler();
 }
-
 
 void loop() {
   // put your main code here, to run repeatedly:
