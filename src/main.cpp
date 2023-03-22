@@ -826,8 +826,6 @@ void setup() {
   //Initialise UARTF
   Serial.begin(9600);
   Serial.println("Hello World");
-  //gensin();
-  genflo();
   joystick_neutral_x = analogRead(JOYX_PIN);
   joystick_neutral_y = analogRead(JOYY_PIN);
   g_initial_handshake = true;
