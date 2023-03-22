@@ -5,7 +5,179 @@
 #include <math.h>
 #include <ES_CAN.h>
 #include <sinwave.h>
+#include "main.h"
 
+/////////////////////FROM STM32CUBE
+DAC_HandleTypeDef hdac1;
+DMA_HandleTypeDef hdma_dac_ch1;
+DMA_HandleTypeDef hdma_dac_ch2;
+
+TIM_HandleTypeDef htim6;
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
+static void MX_TIM6_Init(void);
+static void MX_DAC1_Init(void);
+
+static void MX_DAC1_Init(void)
+{
+
+  /* USER CODE BEGIN DAC1_Init 0 */
+
+  /* USER CODE END DAC1_Init 0 */
+
+  DAC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN DAC1_Init 1 */
+
+  /* USER CODE END DAC1_Init 1 */
+
+  /** DAC Initialization
+  */
+  hdac1.Instance = DAC1;
+  if (HAL_DAC_Init(&hdac1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** DAC channel OUT1 config
+  */
+  sConfig.DAC_SampleAndHold = DAC_SAMPLEANDHOLD_DISABLE;
+  sConfig.DAC_Trigger = DAC_TRIGGER_T6_TRGO;
+  sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
+  sConfig.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_DISABLE;
+  sConfig.DAC_UserTrimming = DAC_TRIMMING_FACTORY;
+  if (HAL_DAC_ConfigChannel(&hdac1, &sConfig, DAC_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** DAC channel OUT2 config
+  */
+  sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
+  if (HAL_DAC_ConfigChannel(&hdac1, &sConfig, DAC_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN DAC1_Init 2 */
+
+  /* USER CODE END DAC1_Init 2 */
+
+}
+
+// void SystemClock_Config(void)
+// {
+//   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+//   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+//   /** Configure the main internal regulator output voltage
+//   */
+//   if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK)
+//   {
+//     Error_Handler();
+//   }
+
+//   /** Initializes the RCC Oscillators according to the specified parameters
+//   * in the RCC_OscInitTypeDef structure.
+//   */
+//   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
+//   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
+//   RCC_OscInitStruct.MSICalibrationValue = 0;
+//   RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_6;
+//   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+//   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+//   {
+//     Error_Handler();
+//   }
+
+//   /** Initializes the CPU, AHB and APB buses clocks
+//   */
+//   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+//                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+//   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
+//   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+//   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+//   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+//   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+//   {
+//     Error_Handler();
+//   }
+// }
+
+static void MX_TIM6_Init(void)
+{
+
+  /* USER CODE BEGIN TIM6_Init 0 */
+
+  /* USER CODE END TIM6_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM6_Init 1 */
+
+  /* USER CODE END TIM6_Init 1 */
+  htim6.Instance = TIM6;
+  htim6.Init.Prescaler = 0;
+  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim6.Init.Period = 32768;
+  htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM6_Init 2 */
+
+  /* USER CODE END TIM6_Init 2 */
+
+}
+
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 15, 15);
+  HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
+  /* DMA1_Channel4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel4_IRQn, 15, 15);
+  HAL_NVIC_EnableIRQ(DMA1_Channel4_IRQn);
+
+}
+
+static void MX_GPIO_Init(void)
+{
+/* USER CODE BEGIN MX_GPIO_Init_1 */
+/* USER CODE END MX_GPIO_Init_1 */
+
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+
+/* USER CODE BEGIN MX_GPIO_Init_2 */
+/* USER CODE END MX_GPIO_Init_2 */
+}
+
+// void Error_Handler(void)
+// {
+//   /* USER CODE BEGIN Error_Handler_Debug */
+//   /* User can add his own implementation to report the HAL error return state */
+//   __disable_irq();
+//   while (1)
+//   {
+//   }
+//   /* USER CODE END Error_Handler_Debug */
+// }
+
+/////////////////////FROM STM32CUBE
 #define SAMPLE_BUFFER_SIZE 128
 
 SemaphoreHandle_t keyArrayMutex;
@@ -149,10 +321,10 @@ void sampleISR() {
     writeBuffer1 = !writeBuffer1;
     xSemaphoreGiveFromISR(sampleBufferSemaphore, NULL);
   }
-  if (writeBuffer1)
-    analogWrite(OUTR_PIN, sampleBuffer0[readCtr++]);
-  else
-    analogWrite(OUTR_PIN, sampleBuffer1[readCtr++]);
+//  if (writeBuffer1)
+//     analogWrite(OUTR_PIN, sampleBuffer0[readCtr++]);
+//   else
+//     analogWrite(OUTR_PIN, sampleBuffer1[readCtr++]);
 }
 
 volatile bool press = 0;
@@ -537,6 +709,15 @@ void CAN_RX_ISR (void) {
 
 void setup() {
   // put your setup code here, to run once:
+  HAL_Init(); //FROM stm32cube
+  SystemClock_Config(); //FROM stm32cube
+  MX_GPIO_Init();
+  MX_DMA_Init();
+  MX_TIM6_Init();
+  MX_DAC1_Init();
+
+  
+
   //initialise queue
   sampleBufferSemaphore = xSemaphoreCreateBinary();
   xSemaphoreGive(sampleBufferSemaphore);
@@ -544,7 +725,7 @@ void setup() {
   msgOutQ = xQueueCreate(36,8);
   //semaphore
 
-  CAN_Init(true);8,
+  CAN_Init(true);
   CAN_RegisterRX_ISR(CAN_RX_ISR);
   CAN_RegisterTX_ISR(CAN_TX_ISR);
   setCANFilter(0x123,0x7ff);
@@ -633,6 +814,11 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Hello World");
   //gensin();
+
+  ///HAL_DAC_Start(&hdac1,DAC_CHANNEL_1);
+  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)sampleBuffer0, 32, DAC_ALIGN_12B_R);
+  HAL_TIM_Base_Start(&htim6);
+  Serial.println("Hello World");
   vTaskStartScheduler();
 }
 
@@ -641,10 +827,10 @@ void loop() {
   // put your main code here, to run repeatedly:
   // static uint32_t next = millis();
   // static uint32_t count = 0;
-
+  
   // Serial.println(RX_Message[2]);
   // Serial.println(cVout, DEC);
-  Serial.println(g_count);
+  //Serial.println(g_count);
   // if (millis() > next) {
 
   //   //Serial.println(dog);
