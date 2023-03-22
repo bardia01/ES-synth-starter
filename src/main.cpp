@@ -96,15 +96,6 @@ volatile uint8_t loctave_2 = 0;
 volatile uint8_t uoctave_1 = 0;
 volatile uint8_t uoctave_2 = 0;
 
-volatile float lfowave [4400];
-
-void genflo(){
-  volatile float lfoPhase = 0;
-  for(uint32_t i = 0; i< 4400; i++){
-    lfowave[i] = ((sin(2*PI*lfoPhase / (UINT_MAX))+1)/2);
-    lfoPhase += LFO_STEP_SIZE;
-  }
-}
 
 //Lab 1 section 1, reading a single row of the key matrix
 volatile int32_t currentStepSize = 0;
@@ -763,7 +754,7 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Hello World");
   //gensin();
-  genflo();
+  //genflo();
 
   g_initial_handshake = true;
   vTaskStartScheduler();
