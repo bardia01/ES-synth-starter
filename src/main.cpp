@@ -34,6 +34,8 @@ volatile bool g_handshake_received = 0;
 #endif
 
 #define HANDSHAKE_MSG_ID 255
+#define STEREO_MSG_ID_0 254
+#define STEREO_MSG_ID_1 253
 
 #ifdef receiver
   uint8_t MY_ID = 8;
@@ -101,6 +103,8 @@ volatile uint8_t loctave_2 = 0;
 volatile uint8_t uoctave_1 = 0;
 volatile uint8_t uoctave_2 = 0;
 
+volatile uint8_t g_control_from_joystick = 0;
+
 
 //Lab 1 section 1, reading a single row of the key matrix
 volatile int32_t currentStepSize = 0;
@@ -152,10 +156,10 @@ class Knob {
 
 };
 
-Knob knob3(8, 0);
-Knob knob2(8, 0);
+Knob volume_knob(8, 0);
+Knob octave_knob(8, 0);
 Knob knob1(3,0);
-Knob knob0(3,0);
+Knob lfo_knob(3,0);
 
 volatile uint8_t g_keys_pressed_p1;
 volatile uint8_t g_keys_pressed_p2;
@@ -185,28 +189,28 @@ inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
-      if(knob2.knobrotation + octave > 4){
-        phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
+      if(octave_knob.knobrotation + octave > 4){
+        phase_arr[i] += stepSizes[i] << (octave_knob.knobrotation - 4 + octave);
       }
       else{
-        phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
+        phase_arr[i] += stepSizes[i] >> (-octave + 4 - octave_knob.knobrotation);
       }
       vout_arr[i] = (phase_arr[i] >> 24) - 128; 
-      vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
+      vout_arr[i] = vout_arr[i] >> (8 - volume_knob.knobrotation);
       cVout += vout_arr[i];
     }
   }
   for(int i=0; i<4;i++){
     if((keyint_1 & (1<<i)) != 0){
       count++;
-      if(knob2.knobrotation + octave > 4){
-        phase_arr[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + octave);
+      if(octave_knob.knobrotation + octave > 4){
+        phase_arr[i+8] += stepSizes[i+8] << (octave_knob.knobrotation - 4 + octave);
       }
       else{
-        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
+        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - octave_knob.knobrotation);
       }
       vout_arr[i+8] = (phase_arr[i+8] >> 24) - 128; 
-      vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
+      vout_arr[i+8] = vout_arr[i+8] >> (8 - volume_knob.knobrotation);
       cVout += vout_arr[i+8];
     }
   }
@@ -215,30 +219,30 @@ inline void create_square(int32_t &cVout, uint16_t &count, int32_t vout_arr[], u
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
-      if(knob2.knobrotation + octave > 4){
-        phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
+      if(octave_knob.knobrotation + octave > 4){
+        phase_arr[i] += stepSizes[i] << (octave_knob.knobrotation - 4 + octave);
       }
       else{
-        phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
+        phase_arr[i] += stepSizes[i] >> (-octave + 4 - octave_knob.knobrotation);
       }
       int32_t d = (phase_arr[i] >> 24) - 128; 
       vout_arr[i] = (d>0) ? 127 : -128;
-      vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
+      vout_arr[i] = vout_arr[i] >> (8 - volume_knob.knobrotation);
       cVout += vout_arr[i];
     }
   }
   for(int i=0; i<4;i++){
     if((keyint_1 & (1<<i)) != 0){
       count++;
-      if(knob2.knobrotation + octave > 4){
-        phase_arr[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + octave);
+      if(octave_knob.knobrotation + octave > 4){
+        phase_arr[i+8] += stepSizes[i+8] << (octave_knob.knobrotation - 4 + octave);
       }
       else{
-        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
+        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - octave_knob.knobrotation);
       }
       int32_t d = (phase_arr[i+8] >> 24) - 128; 
       vout_arr[i+8] = (d>0) ? 127 : -128;
-      vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
+      vout_arr[i+8] = vout_arr[i+8] >> (8 - volume_knob.knobrotation);
       cVout += vout_arr[i+8];
     }
   }
@@ -247,31 +251,31 @@ inline void create_sin(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
-      if(knob2.knobrotation + octave > 4){
-        phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
+      if(octave_knob.knobrotation + octave > 4){
+        phase_arr[i] += stepSizes[i] << (octave_knob.knobrotation - 4 + octave);
       }
       else{
-        // knob2.knobrotation is [0,3]
-        phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
+        // octave_knob.knobrotation is [0,3]
+        phase_arr[i] += stepSizes[i] >> (-octave + 4 - octave_knob.knobrotation);
       }
       int32_t d = (phase_arr[i] >> 22); 
       vout_arr[i] = sinwave[d];
-      vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
+      vout_arr[i] = vout_arr[i] >> (8 - volume_knob.knobrotation);
       cVout += vout_arr[i];
     }
   }
   for(int i=0; i<4;i++){
     if((keyint_1 & (1<<i)) != 0){
       count++;
-      if(knob2.knobrotation + octave > 4){
-        phase_arr[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + octave);
+      if(octave_knob.knobrotation + octave > 4){
+        phase_arr[i+8] += stepSizes[i+8] << (octave_knob.knobrotation - 4 + octave);
       }
       else{
-        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
+        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - octave_knob.knobrotation);
       }
       int32_t d = phase_arr[i+8] >> 22; 
       vout_arr[i+8] = sinwave[d];
-      vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
+      vout_arr[i+8] = vout_arr[i+8] >> (8 - volume_knob.knobrotation);
       cVout += vout_arr[i+8];
     }
   }
@@ -280,30 +284,30 @@ inline void create_triangle(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
-      if(knob2.knobrotation + octave > 4){
-        phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
+      if(octave_knob.knobrotation + octave > 4){
+        phase_arr[i] += stepSizes[i] << (octave_knob.knobrotation - 4 + octave);
       }
       else{
-        phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
+        phase_arr[i] += stepSizes[i] >> (-octave + 4 - octave_knob.knobrotation);
       }
       int32_t d = (phase_arr[i] >> 24) - 128; 
       vout_arr[i] = (d < 0 ) ? (d << 1) + 127 : 127 - (d << 1);
-      vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
+      vout_arr[i] = vout_arr[i] >> (8 - volume_knob.knobrotation);
       cVout += vout_arr[i];
     }
   }
   for(int i=0; i<4;i++){
     if((keyint_1 & (1<<i)) != 0){
       count++;
-      if(knob2.knobrotation + octave > 4){
-        phase_arr[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + octave);
+      if(octave_knob.knobrotation + octave > 4){
+        phase_arr[i+8] += stepSizes[i+8] << (octave_knob.knobrotation - 4 + octave);
       }
       else{
-        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
+        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - octave_knob.knobrotation);
       }
       int32_t d = (phase_arr[i+8] >> 24) - 128; 
       vout_arr[i+8] = (d < 0 ) ? (d << 1) + 127 : 127 - (d << 1);
-      vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
+      vout_arr[i+8] = vout_arr[i+8] >> (8 - volume_knob.knobrotation);
       cVout += vout_arr[i+8];
     }
   }
@@ -313,7 +317,7 @@ inline void create_custom(int32_t &cVout, uint16_t &count, int32_t vout_arr, uin
   count++;
   phase_arr += stepSizes[0] * (2*(g_joyx- 522)/JOYSTICK_MAX);
   vout_arr = (phase_arr >> 24) - 128;
-  vout_arr = vout_arr >> (8 - knob3.knobrotation);
+  vout_arr = vout_arr >> (8 - volume_knob.knobrotation);
   cVout += vout_arr;
 }
 
@@ -334,14 +338,32 @@ void sampleISR() {
 volatile bool press = 0;
 uint8_t g_myPos = 0;
 
-void writetx(uint8_t totx[], bool is_handshake=0){
-  if(!is_handshake) totx[0] = MY_ID;
-  else totx[0] = HANDSHAKE_MSG_ID;
-  totx[1] = (knob2.knobrotation << 4) | knob3.knobrotation;
-  totx[2] = press?g_keys_pressed_p1:totx[2];
-  totx[3] = press?g_keys_pressed_p2:totx[3];
-  totx[4] = g_myPos;
-  totx[5] = knob1.knobrotation;
+void writetx(uint8_t totx[], uint8_t whichmsg=0){
+  if(whichmsg == 'H'){
+    totx[0] = HANDSHAKE_MSG_ID;
+    totx[1] = (octave_knob.knobrotation << 4) | volume_knob.knobrotation;
+    totx[2] = g_keys_pressed_p1;
+    totx[3] = g_keys_pressed_p2;
+    totx[4] = g_myPos;
+    totx[5] = loctave_1;
+    totx[6] = loctave_2;
+  }
+  else if(whichmsg == STEREO_MSG_ID_0){
+    totx[0] = STEREO_MSG_ID_0;
+    totx[1] = (octave_knob.knobrotation << 4) | volume_knob.knobrotation;
+    totx[2] = g_keys_pressed_p1;
+    totx[3] = g_keys_pressed_p2;
+    totx[4] = g_myPos;
+    totx[5] = loctave_1;
+    totx[6] = loctave_2;  }
+  else if(whichmsg == STEREO_MSG_ID_1){
+    totx[0] = STEREO_MSG_ID_1; // THIS SHOULDN'T HAPPEN
+    totx[1] = (octave_knob.knobrotation << 4) | volume_knob.knobrotation;
+    totx[2] = uoctave_1;
+    totx[3] = uoctave_2;
+    totx[4] = g_myPos;
+    totx[5] = g_control_from_joystick;
+  }
 }
 
 bool g_outBits[7] = {true, true, true, true, true, true, true};
@@ -372,7 +394,7 @@ void handshaketask(void * pvParameters) {
         l_myPos = max((int)g_myPos, g_handshake_msg[4] + 1);
         __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
         uint8_t handshake_msg[8] = {0};
-        writetx(handshake_msg, true);
+        writetx(handshake_msg, 'H');
         xQueueSend(msgOutQ, handshake_msg, portMAX_DELAY);
         g_initial_handshake = false;
         for(uint8_t i = 0; i < 7; i++){
@@ -390,9 +412,8 @@ void handshaketask(void * pvParameters) {
 }
 
 
-int8_t g_toggle_joyx = 0;
-int8_t g_toggle_joyy = 0;
-uint8_t g_control_from_joystick = 0;
+volatile int8_t g_toggle_joyx = 0;
+volatile int8_t g_toggle_joyy = 0;
 /*
               X    Y
 FULL LEFT =  926   ~479
@@ -474,7 +495,6 @@ void scanKeysTask(void * pvParameters) {
     memcpy(keyArrayCopy,(void*)keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
       uint16_t keys_pressed_copy = 0;
-      xSemaphoreGive(keyArrayMutex);
       for(uint8_t i = 0; i < 3; i++){
         for(uint8_t j = 0; j < 4; j++)
         {
@@ -501,19 +521,20 @@ void scanKeysTask(void * pvParameters) {
       an0 = ((keyArrayCopy[4])& 0x0C) >> 2;
 
       // Assign knob values to knob objects
-      knob3.getValue(an3);
-      knob2.getValue(an2);
+      volume_knob.getValue(an3);
+      octave_knob.getValue(an2);
       knob1.getValue(an1);
-      knob0.getValue(an0);
+      lfo_knob.getValue(an0);
       
 
       uint8_t l_HSEast = (((keyArrayCopy[6]) & 0x08) >> 3);
       uint8_t l_HSWest = (((keyArrayCopy[5]) & 0x08) >> 3);
       __atomic_store(&g_HSEast, &l_HSEast, __ATOMIC_RELAXED);
       __atomic_store(&g_HSWest, &l_HSWest, __ATOMIC_RELAXED);
-
-      if(g_myPos == 0){ xQueueSend(msgOutQ, TX_Message, 0);}
-      else xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
+      xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
+      // if(g_myPos == 0){ xQueueSend(msgOutQ, TX_Message, 0);}
+      // else xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
+    xSemaphoreGive(keyArrayMutex);
   }
 }
 void displayUpdateTask(void * pvParameters){
@@ -544,7 +565,7 @@ void displayUpdateTask(void * pvParameters){
     u8g2.print(g_joyy, DEC);
     u8g2.drawStr(5,20, "Volume:");
     u8g2.setCursor(50,20);
-    u8g2.print(knob3.knobrotation,DEC);
+    u8g2.print(volume_knob.knobrotation,DEC);
     std::string wave_type;
     if(g_control_from_joystick == 2) wave_type = "Sine";
     else if(g_control_from_joystick == 0) wave_type = "Sawtooth";
@@ -553,11 +574,11 @@ void displayUpdateTask(void * pvParameters){
     u8g2.drawStr(65,20, wave_type.c_str()); 
     u8g2.drawStr(5,30, "Octave:");
     u8g2.setCursor(42,30);
-    u8g2.print(knob2.knobrotation,DEC);
+    u8g2.print(octave_knob.knobrotation,DEC);
     
     u8g2.drawStr(52,30, "AM LFO:");
     u8g2.setCursor(105,30);
-    u8g2.print(knob0.knobrotation,DEC); 
+    u8g2.print(lfo_knob.knobrotation,DEC); 
 
     u8g2.sendBuffer();          // transfer internal memory to the display
     digitalToggle(LED_BUILTIN);
@@ -668,10 +689,10 @@ void sampleBufferTask(void* pvParameters){
       cVout = avg_filter(cVout);
 
       // Apply the LFO AM modulation if the knob is not on 0
-      float multiplier = (knob0.knobrotation) ? lfowave[lfo_index] : 1;
+      float multiplier = (lfo_knob.knobrotation) ? lfowave[lfo_index] : 1;
 
       // Increment the LFO index by the knob rotation value
-      lfo_index += (knob0.knobrotation);
+      lfo_index += (lfo_knob.knobrotation);
 
       // Apply the multiplier to the cVout and clamp the result to the 8-bit range
       cVout = max(-128, min(127, (int)(cVout*multiplier)));
@@ -689,14 +710,14 @@ void sampleBufferTask(void* pvParameters){
 }
 
 void CANDecodeTask(void * pvParameters){ 
-  bool local_octave_up;;
-  uint32_t localCurrentStepSize = 0;
+  bool local_octave_up;
   uint8_t localRX_Message[8];
   uint8_t l_my_id;
   const TickType_t xFrequency = 30/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
-    // vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    // vTaskDelayUntil(&xLastWakeTime, xFrequency); 
+    
     xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
     xSemaphoreTake(handshakemutex, portMAX_DELAY);
     if(localRX_Message[0] == HANDSHAKE_MSG_ID){
@@ -713,12 +734,19 @@ void CANDecodeTask(void * pvParameters){
         __atomic_store_n(&uoctave_1, localRX_Message[2], __ATOMIC_RELAXED);
         __atomic_store_n(&uoctave_2, localRX_Message[3], __ATOMIC_RELAXED);
       }
+      uint8_t stereo_msg_0[8] = {0};
+      uint8_t stereo_msg_1[8] = {0};
+      writetx(stereo_msg_0, STEREO_MSG_ID_0);
+      writetx(stereo_msg_1, STEREO_MSG_ID_1);
+      if(g_myPos != 0){
+        xQueueSend(msgOutQ, stereo_msg_0, portMAX_DELAY);
+        xQueueSend(msgOutQ, stereo_msg_1, portMAX_DELAY);
+      }
     }
     xSemaphoreGive(handshakemutex);
     xSemaphoreGive(rxmsgMutex);
   }
 }
-
 
 #ifdef receiver
   void CAN_RX_ISR (void) {
@@ -853,7 +881,7 @@ void setup() {
   joystick_neutral_x = analogRead(JOYX_PIN);
   joystick_neutral_y = analogRead(JOYY_PIN);
   g_initial_handshake = true;
-  knob0.knobrotation = 0;
+  lfo_knob.knobrotation = 0;
   vTaskStartScheduler();
 }
 
