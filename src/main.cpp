@@ -254,6 +254,7 @@ inline void create_sin(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint
         phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
       }
       else{
+        // knob2.knobrotation is [0,3]
         phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
       }
       int32_t d = (phase_arr[i] >> 22); 
@@ -723,7 +724,7 @@ void setup() {
   xTaskCreate(
     sampleBufferTask,		/* Function that implements the tsask */
     "sampleBuffer",		/* Text name for the task */
-    1024,      		/* Stack size in words, not bytes */
+    256,      		/* Stack size in words, not bytes */
     NULL,			/* Parameter passed into the task */
     2,			/* Task priority */
     &sampleBuffer );	/* Pointer to store the task handle */
