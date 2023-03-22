@@ -659,7 +659,7 @@ void sampleBufferTask(void* pvParameters){
       // memcpy(RX_Message, RX_Message, 8);
       // xSemaphoreGive(rxmsgMutex);
       float AMmultiplier = (knob0.knobrotation) ? lfowave[lfo_index] : 1;
-      float FMmultiplier = (knob0.knobrotation) ? ((lfowave[lfo_index])/5)+1 : 1;
+      float FMmultiplier = (knob0.knobrotation) ? ((lfowave[lfo_index])/1000)+1 : 1;
 
       if(g_control_from_joystickx == 0){
         //sawtooth
