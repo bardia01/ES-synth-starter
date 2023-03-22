@@ -853,6 +853,7 @@ void setup() {
   joystick_neutral_x = analogRead(JOYX_PIN);
   joystick_neutral_y = analogRead(JOYY_PIN);
   g_initial_handshake = true;
+  knob0.knobrotation = 0;
   vTaskStartScheduler();
 }
 
