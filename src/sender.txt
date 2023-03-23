@@ -352,31 +352,34 @@ void displayUpdateTask(void * pvParameters){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     u8g2.setFont(u8g2_font_Georgia7px_te);
     u8g2.clearBuffer();         // clear the internal memory
-    u8g2.drawStr(95,10, "Pos:");
+   #ifdef receiver
+    u8g2.drawStr(113,10, "R");
     u8g2.setCursor(120,10);
     u8g2.print(g_myPos, DEC);
-    #ifndef receiver
-      u8g2.drawStr(92,30, "SNDR");
-    #endif
-    u8g2.drawStr(5,10, "Note:");
-    if(g_keys_pressed_p1 || g_keys_pressed_p2 ) u8g2.drawStr(40,10,keyMap[currentStepSize].c_str());
-    u8g2.setCursor(50, 10);
-    u8g2.drawStr(5,20, "Volume:");
-    u8g2.setCursor(50,20);
-    u8g2.print(g_volume,DEC); 
-    std::string wave_type;
-    if(g_control_from_joystick == 2) wave_type = "Sine";
-    else if(g_control_from_joystick == 0) wave_type = "Sawtooth";
-    else if(g_control_from_joystick == 1) wave_type = "Square";
-    else if(g_control_from_joystick == 3) wave_type = "Triangle";
-    u8g2.drawStr(80,20, wave_type.c_str()); 
-    u8g2.drawStr(5,30, "Octave:");
-    u8g2.setCursor(50,30);
-    u8g2.print(g_octave,DEC);
- 
-    
-    u8g2.sendBuffer();          // transfer internal memory to the display
-    digitalToggle(LED_BUILTIN);
+  #else
+    u8g2.drawStr(113,10, "S");
+    u8g2.setCursor(120,10);
+    u8g2.print(g_myPos, DEC);
+  #endif
+  // 1st row
+  u8g2.drawStr(5,10, "Note:");
+  if(g_keys_pressed_p1 || g_keys_pressed_p2) u8g2.drawStr(32,10,keyMap[currentStepSize].c_str());
+  // 2nd row
+  u8g2.drawStr(5,20, "Vol:");
+  u8g2.setCursor(30,20);
+  u8g2.print(g_volume,DEC);
+  std::string wave_type;
+  if(g_control_from_joystick == 2) wave_type = "Sine";
+  else if(g_control_from_joystick == 0)wave_type = "Sawtooth";
+  else if(g_control_from_joystick == 1) wave_type = "Square";
+  else if(g_control_from_joystick == 3) wave_type = "Triangle";
+  u8g2.drawStr(55,10, wave_type.c_str()); 
+  // 3rd row
+  u8g2.drawStr(5,30, "Oct:");
+  u8g2.setCursor(30,30);
+  u8g2.print(g_octave,DEC);
+  u8g2.sendBuffer();          // transfer internal memory to the display
+  digitalToggle(LED_BUILTIN);
   }
 }
 
