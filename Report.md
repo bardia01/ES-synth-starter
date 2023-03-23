@@ -50,6 +50,8 @@ Handshake messages contain the necessary information to distinguish a handshake 
 
 ### Joystick
 
+Decoding the joystick drag value is done in its own task as its values are read from pins corresponding to the analogue joystick inputs x and y, rather than from the key matrix.
+
 ### Filtering
 
 The sound outputted by the keyboard was always quite synthetic and electronic, especially with the Sawtooth wave, which is not common in real musical instruments. To make the sound more realistic, we included an FIR filter on the output. The FIR filter attenuates certain frequencies to make the sound more precise and controlled. The FIR filter is only applied on the output wave to smooth it.
