@@ -6,16 +6,16 @@ The project was to build a music synthesiser. The project started on a single ke
 ## Sections
 
 - [Base Features](#base-features)
-- Advanced features
-- Critical timing analysis
+- [Advanced features](#advanced-features)
+- [Critical timing analysis](#critical-timing-analysis)
 
 ## Base Features
 The base functions we have implemented are all the ones given to us in the specifications for the coursework. These are all implemented using a task scheduler as defined in the labs. These tasks also use a delay to ensure they are not called before the set period has passed. This is a blocking assignment which ensures that all tasks can be accomplished simultaneously without creating a timing issue.
 
-- Scan Keys Task
-- Display Update Task 
-- Knob Class
-- The CAN 
+- [Scan Keys Task](#scan-keys-task)
+- [Display Update Task](#display-update-task)
+- [The Knob Class](#the-knob-class)
+- [The CAN Bus](#the-can-bus)
 
 ### Scan keys task
 The scan keys function is the central function of the musical synthesiser. Its functioning is quite simple; it scans through all the rows of the KeyArray to find what knobs or notes are being pressed, and then, depending on the action taken, it will take different actions. If a note or a chord of notes is played, the keys pressed variables get updated, and a sound starts to play. The knobs regulate the volume of the notes being played to set the octave and the type of wave being played. The waves being played can be the sawtooth wave, the triangle wave and a sinusoidal wave.
@@ -34,12 +34,12 @@ As expected, the knob value (a parameter of the class instance) is incremented o
 
 ## Advanced Features
 
-- Auto Detection using Handshake
-- Joystick
-- Filtering
-- Low-Frequency Oscillation (LFO)
-- Waveform selection]
-- Polyphony 
+- [Auto Detection using Handshake](#auto-detection-using-handshake)
+- [Joystick](#joystick)
+- [Filtering](#filtering)
+- [Low-Frequency Oscillation (LFO)](#low-frequency-oscillation)
+- [Waveform selection](#waveform-selection)
+- [Polyphony](#polyphony) 
 
 ### Auto Detection using Handshake
 An auto handshake detection is implemented which, on startup, correctly interprets lower, middle and upper octave modules for a two or three keyboard set-up. 
