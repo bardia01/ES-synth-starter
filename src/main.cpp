@@ -836,24 +836,18 @@ void CANDecodeTask(void * pvParameters){
 
 #ifdef receiver
   void CAN_RX_ISR (void) {
-    #ifndef TEST_CAN_RX
-    uint8_t RX_Message_ISR[8];
-    uint32_t ID;
-    #endif
     #ifdef TEST_CAN_RX
     uint8_t RX_Message_ISR[8];
     uint32_t ID;
     #endif
 
     CAN_RX(ID, RX_Message_ISR);
-    Serial.println(RX_Message_ISR[0]);
-    // Serial.println(msgInQ);
     xQueueSend(msgInQ,RX_Message_ISR, 0);
   }
 #endif
 
 void CAN_TX_ISR (void) {
-	xSemaphoreGiveFromISR(CAN_TX_Semaphore, NULL);
+	xSemaphoreGive(CAN_TX_Semaphore);
 }
 
 void setup() {
@@ -866,11 +860,10 @@ void setup() {
   //semaphore
 
   CAN_Init(true);
-  CAN_RegisterRX_ISR(CAN_RX_ISR);
 
 
   #ifndef DISABLE_THREADS
-
+   CAN_RegisterRX_ISR(CAN_RX_ISR);
   TaskHandle_t candecode = NULL;
   xTaskCreate(
     CANDecodeTask,		/* Function that implements the task */
@@ -881,7 +874,6 @@ void setup() {
     &candecode);	/* Pointer to store the task handle */
     CAN_RegisterTX_ISR(CAN_TX_ISR);
   #endif
-
 
   setCANFilter(0x123,0x7ff);
 
@@ -1075,37 +1067,26 @@ void setup() {
   while(1);
 #endif
 #ifdef TEST_CAN_RX
-  // for (int iter = 0; iter < 32; iter++) {
-  //   xSemaphoreTakeFromISR(CAN_RX_Semaphore, NULL);
-  //   // Serial.println(iter);
-  // }
-  uint8_t RX_Message[8] = {0};
-  //for (int iter = 0; iter < 3; iter++) {
-    CAN_TX(0x123, RX_Message);
-    // Serial.println(iter);
-    //delay(1000);
-  //}
+
+  CAN_TX(0x123, RX_Message);
 
   delay(2000);
-    // Serial.println(iter);
 
-  Serial.println("Done sending");
+
   uint32_t startTime = micros();
-  // for (int iter = 0; iter < 3; iter++) {
+  
   CAN_RX_ISR();
-  //   Serial.println(iter);
-  //   // Serial.println(iter);
-  // }
+ 
   Serial.println(micros()-startTime);
-  //while(1);
+  while(1);
 #endif
-
+#ifdef TEST_CAN_TX
+  uint32_t startTime = micros();
+  CAN_TX_ISR();
+  Serial.println(micros()-startTime);
+  while(1);
+#endif
 }
-
-
-
-
-
 
 
 void loop() {
