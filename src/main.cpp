@@ -11,7 +11,16 @@
 #define JOYSTICK_MAX 920
 #define JOYSTICK_HYSTERISIS_THRESHOLD 200
 #define JOYSTICK_HYSTERISIS_THRESHOLD_SMALL 60
-
+#define DISABLE_THREADS
+// #define TEST_SCANKEYS
+// #define TEST_HANDSHAKE
+// #define TEST_DISPLAY
+// #define TEST_JOYSTICK
+// #define TEST_SAMPLEBUFFER
+// #define TEST_CANSEND
+// #define TEST_CANDECODER
+// # define TEST_SAMPLEISR
+#define TEST_CAN_RX
 uint32_t joystick_neutral_x = 0;
 uint32_t joystick_neutral_y = 0;
 
@@ -30,7 +39,7 @@ volatile uint8_t g_handshake_msg[8] = {0};
 volatile bool g_handshake_received = 0;
 
 #ifndef receiver
-  uint8_t MY_ID = 0; 
+  uint8_t MY_ID = 0;
 #endif
 
 #define HANDSHAKE_MSG_ID 255
@@ -107,7 +116,7 @@ volatile int32_t currentStepSize = 0;
 volatile uint8_t keyArray[7];
 uint8_t readCols() {
   uint8_t cols = 0;
-  cols |= digitalRead(C0_PIN) << 0; // 8'b0 bitor one pin << 0 
+  cols |= digitalRead(C0_PIN) << 0; // 8'b0 bitor one pin << 0
   cols |= digitalRead(C1_PIN) << 1;
   cols |= digitalRead(C2_PIN) << 2;
   cols |= digitalRead(C3_PIN) << 3; // like 00000000 or 00000000 or 00000001 or 00000010 or 00000100
@@ -185,7 +194,7 @@ uint8_t g_control_from_joysticky = 0;
 volatile bool sinsound = 0;
 inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave, float multiplier){
   for(int i=0; i<8;i++){
-    if((keyint_0 & (1<<i)) != 0){ 
+    if((keyint_0 & (1<<i)) != 0){
       count++;
       if(knob2.knobrotation + octave > 4){
         phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
@@ -194,7 +203,7 @@ inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
         phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
       }
       if(g_control_from_joysticky==1) phase_arr[i]*=multiplier;
-      vout_arr[i] = (phase_arr[i] >> 24) - 128; 
+      vout_arr[i] = (phase_arr[i] >> 24) - 128;
       vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
       cVout += vout_arr[i];
     }
@@ -209,7 +218,7 @@ inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
         phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
       }
       if(g_control_from_joysticky==1) phase_arr[i+8]*=multiplier;
-      vout_arr[i+8] = (phase_arr[i+8] >> 24) - 128; 
+      vout_arr[i+8] = (phase_arr[i+8] >> 24) - 128;
       vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
       cVout += vout_arr[i+8];
     }
@@ -217,7 +226,7 @@ inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
 }
 inline void create_square(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave, float multiplier){
   for(int i=0; i<8;i++){
-    if((keyint_0 & (1<<i)) != 0){ 
+    if((keyint_0 & (1<<i)) != 0){
       count++;
       if(knob2.knobrotation + octave > 4){
         phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
@@ -226,7 +235,7 @@ inline void create_square(int32_t &cVout, uint16_t &count, int32_t vout_arr[], u
         phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
       }
       if(g_control_from_joysticky==1) phase_arr[i]*=multiplier;
-      int32_t d = (phase_arr[i] >> 24) - 128; 
+      int32_t d = (phase_arr[i] >> 24) - 128;
       vout_arr[i] = (d>0) ? 127 : -128;
       vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
       cVout += vout_arr[i];
@@ -242,7 +251,7 @@ inline void create_square(int32_t &cVout, uint16_t &count, int32_t vout_arr[], u
         phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
       }
       if(g_control_from_joysticky==1) phase_arr[i+8]*=multiplier;
-      int32_t d = (phase_arr[i+8] >> 24) - 128; 
+      int32_t d = (phase_arr[i+8] >> 24) - 128;
       vout_arr[i+8] = (d>0) ? 127 : -128;
       vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
       cVout += vout_arr[i+8];
@@ -251,7 +260,7 @@ inline void create_square(int32_t &cVout, uint16_t &count, int32_t vout_arr[], u
 }
 inline void create_sin(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave, float multiplier){
   for(int i=0; i<8;i++){
-    if((keyint_0 & (1<<i)) != 0){ 
+    if((keyint_0 & (1<<i)) != 0){
       count++;
       if(knob2.knobrotation + octave > 4){
         phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
@@ -261,7 +270,7 @@ inline void create_sin(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint
         phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
       }
       if(g_control_from_joysticky==1) phase_arr[i]*=multiplier;
-      int32_t d = (phase_arr[i] >> 22); 
+      int32_t d = (phase_arr[i] >> 22);
       vout_arr[i] = sinwave[d];
       vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
       cVout += vout_arr[i];
@@ -277,7 +286,7 @@ inline void create_sin(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint
         phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
       }
       if(g_control_from_joysticky==1) phase_arr[i+8]*=multiplier;
-      int32_t d = phase_arr[i+8] >> 22; 
+      int32_t d = phase_arr[i+8] >> 22;
       vout_arr[i+8] = sinwave[d];
       vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
       cVout += vout_arr[i+8];
@@ -286,7 +295,7 @@ inline void create_sin(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint
 }
 inline void create_triangle(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave, float multiplier){
   for(int i=0; i<8;i++){
-    if((keyint_0 & (1<<i)) != 0){ 
+    if((keyint_0 & (1<<i)) != 0){
       count++;
       if(knob2.knobrotation + octave > 4){
         phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
@@ -295,7 +304,7 @@ inline void create_triangle(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
         phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
       }
       if(g_control_from_joysticky==1) phase_arr[i]*=multiplier;
-      int32_t d = (phase_arr[i] >> 24) - 128; 
+      int32_t d = (phase_arr[i] >> 24) - 128;
       vout_arr[i] = (d < 0 ) ? (d << 1) + 127 : 127 - (d << 1);
       vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
       cVout += vout_arr[i];
@@ -311,7 +320,7 @@ inline void create_triangle(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
         phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
       }
       if(g_control_from_joysticky==1) phase_arr[i+8]*=multiplier;
-      int32_t d = (phase_arr[i+8] >> 24) - 128; 
+      int32_t d = (phase_arr[i+8] >> 24) - 128;
       vout_arr[i+8] = (d < 0 ) ? (d << 1) + 127 : 127 - (d << 1);
       vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
       cVout += vout_arr[i+8];
@@ -360,23 +369,25 @@ bool tmp_outBits[7] = {true, true, true, true, true, true, true};
 void handshaketask(void * pvParameters) {
   const TickType_t xFrequency = 80/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  #ifndef TEST_HANDSHAKE
   while(1){
    vTaskDelayUntil( &xLastWakeTime, xFrequency );
+  #endif
    xSemaphoreTake(handshakemutex, portMAX_DELAY);
    xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
    uint8_t keyarraytmp[2];
    uint8_t l_myPos;
    for(uint8_t i = 5; i < 7; i++){
       setRow(i);
-      digitalWrite(REN_PIN,1);   
+      digitalWrite(REN_PIN,1);
       delayMicroseconds(3);
       keyarraytmp[i] = readCols();
-      digitalWrite(REN_PIN,0);     
+      digitalWrite(REN_PIN,0);
     }
     uint8_t l_HSEast = (((keyarraytmp[6]) & 0x08) >> 3);
     uint8_t l_HSWest = (((keyarraytmp[5]) & 0x08) >> 3);
     if(g_handshake_received == 1 || g_initial_handshake == 1){
-      if(l_HSWest == 1 && g_myPos ==0 && l_HSEast == 0){ 
+      if(l_HSWest == 1 && g_myPos ==0 && l_HSEast == 0){
         bool l_outBits[7] = {true, true, true, true, true, false, false};
         memcpy(g_outBits, l_outBits, sizeof(l_outBits));
         l_myPos = max((int)g_myPos, g_handshake_msg[4] + 1);
@@ -388,15 +399,17 @@ void handshaketask(void * pvParameters) {
         for(uint8_t i = 0; i < 7; i++){
           setRow(i);
           digitalWrite(OUT_PIN,l_outBits[i]); //Set value to latch in DFF
-          digitalWrite(REN_PIN,1); 
-          digitalWrite(REN_PIN,0);     
+          digitalWrite(REN_PIN,1);
+          digitalWrite(REN_PIN,0);
         }
       }
       __atomic_store_n(&g_handshake_received, false, __ATOMIC_RELAXED);
-    }    
+    }
     xSemaphoreGive(keyArrayMutex);
     xSemaphoreGive(handshakemutex);
+  #ifndef TEST_HANDSHAKE
   }
+  #endif
 }
 
 
@@ -418,9 +431,11 @@ void joysticktask(void * pvParameters){
   static int8_t l_toggle_joyy = 0;
   static uint8_t l_control_from_joystickx = 0;
   static uint8_t l_control_from_joysticky = 0;
+  #ifndef TEST_JOYSTICK
   while(1){
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
-    // Store prev values 
+  #endif
+    // Store prev values
     __atomic_store(&g_joyx_prev, &g_joyx, __ATOMIC_RELAXED);
     __atomic_store(&g_joyy_prev, &g_joyy, __ATOMIC_RELAXED);
 
@@ -444,8 +459,8 @@ void joysticktask(void * pvParameters){
         l_control_from_joysticky = l_control_from_joysticky==1?0:1; // -1 indicates down
       }
     }
-  
-    
+
+
     if(active && (g_toggle_joyx == 0)){
       //joy stick has moved right
       if(g_joyx < g_joyx_prev - JOYSTICK_HYSTERISIS_THRESHOLD_SMALL){
@@ -474,7 +489,9 @@ void joysticktask(void * pvParameters){
 
     __atomic_store(&g_control_from_joysticky, &l_control_from_joysticky, __ATOMIC_RELAXED);
     __atomic_store(&g_control_from_joystickx, &l_control_from_joystickx, __ATOMIC_RELAXED);
+  #ifndef TEST_JOYSTICK
   }
+  #endif
 }
 
 void scanKeysTask(void * pvParameters) {
@@ -482,20 +499,22 @@ void scanKeysTask(void * pvParameters) {
   TickType_t xLastWakeTime = xTaskGetTickCount();
   static uint8_t an3,an2,an1,an0 =0;
   uint8_t TX_Message[8] = {0};
+  #ifndef TEST_SCANKEYS
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
+  #endif
     uint32_t localCurrentStepSize = 0;
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     //Access keyArray here
     for(uint8_t i = 0; i < 7; i++){
       setRow(i);
       digitalWrite(OUT_PIN,g_outBits[i]); //Set value to latch in DFF
-      digitalWrite(REN_PIN,1);   
+      digitalWrite(REN_PIN,1);
       delayMicroseconds(3);
-      keyArray[i] = readCols();
-      digitalWrite(REN_PIN,0);   
+      keyArray[i] = 15;//readCols();
+      digitalWrite(REN_PIN,0);
     }
-    uint8_t keyArrayCopy[7]; 
+    uint8_t keyArrayCopy[7];
     memcpy(keyArrayCopy,(void*)keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
       uint16_t keys_pressed_copy = 0;
@@ -504,7 +523,7 @@ void scanKeysTask(void * pvParameters) {
         for(uint8_t j = 0; j < 4; j++)
         {
           if(!(keyArrayCopy[i] & (1 << j)))
-          { 
+          {
             localCurrentStepSize = (i*4 + j);
             press = 1;
             keys_pressed_copy |= (1 << (i*4 + j));
@@ -516,7 +535,7 @@ void scanKeysTask(void * pvParameters) {
       __atomic_store(&loctave_1, &keys_pressed_p1, __ATOMIC_RELAXED);
       __atomic_store(&loctave_2, &keys_pressed_p2, __ATOMIC_RELAXED);
       writetx(TX_Message);
-      
+
       __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
 
       // Read knob values
@@ -530,7 +549,7 @@ void scanKeysTask(void * pvParameters) {
       knob2.getValue(an2);
       knob1.getValue(an1);
       knob0.getValue(an0);
-      
+
 
       uint8_t l_HSEast = (((keyArrayCopy[6]) & 0x08) >> 3);
       uint8_t l_HSWest = (((keyArrayCopy[5]) & 0x08) >> 3);
@@ -539,13 +558,17 @@ void scanKeysTask(void * pvParameters) {
 
       if(g_myPos == 0){ xQueueSend(msgOutQ, TX_Message, 0);}
       else xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
+  #ifndef TEST_SCANKEYS
   }
+  #endif
 }
 void displayUpdateTask(void * pvParameters){
   const TickType_t xFrequency = 40/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  #ifndef TEST_DISPLAY
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
+  #endif
     u8g2.setFont(u8g2_font_Georgia7px_te);
     u8g2.clearBuffer();         // clear the internal memory
     xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
@@ -554,7 +577,7 @@ void displayUpdateTask(void * pvParameters){
 	    CAN_RX(ID, RX_Message);
     #endif
     xSemaphoreGive(rxmsgMutex);
-  
+
     u8g2.drawStr(95,10, "Pos:");
     u8g2.setCursor(120,10);
     u8g2.print(g_myPos, DEC);
@@ -575,7 +598,7 @@ void displayUpdateTask(void * pvParameters){
     else if(g_control_from_joystickx == 0) wave_type = "Sawtooth";
     else if(g_control_from_joystickx == 1) wave_type = "Square";
     else if(g_control_from_joystickx == 3) wave_type = "Triangle";
-    u8g2.drawStr(65,20, wave_type.c_str()); 
+    u8g2.drawStr(65,20, wave_type.c_str());
     u8g2.drawStr(5,30, "Octave:");
     u8g2.setCursor(42,30);
     u8g2.print(knob2.knobrotation,DEC);
@@ -584,23 +607,44 @@ void displayUpdateTask(void * pvParameters){
     else if(g_control_from_joysticky==1)
     u8g2.drawStr(52,30, "FM LFO:");
     u8g2.setCursor(105,30);
-    u8g2.print(knob0.knobrotation,DEC); 
+    u8g2.print(knob0.knobrotation,DEC);
 
     u8g2.sendBuffer();          // transfer internal memory to the display
     digitalToggle(LED_BUILTIN);
+  #ifndef TEST_DISPLAY
   }
+  #endif
+
 }
 
 uint8_t g_msgOut[8];
 void CANSendTask(void * pvParameters){
   uint8_t msgOut[8];
+  #ifndef TEST_CANSEND
 	while (1) {
+
+  #endif
+    #ifdef TEST_CANSEND
+    for (int i = 0; i < 3; i++) {
+      xQueueReceive(msgOutQ, msgOut, portMAX_DELAY);
+      // Serial.println(i);
+      g_msgOut[2] = msgOut[2];
+      g_msgOut[3] = msgOut[3];
+      xSemaphoreTake(CAN_TX_Semaphore, portMAX_DELAY);
+      CAN_TX(0x123, msgOut);
+
+
+    }
+    #endif
+    #ifndef TEST_CANSEND
     xQueueReceive(msgOutQ, msgOut, portMAX_DELAY);
     g_msgOut[2] = msgOut[2];
     g_msgOut[3] = msgOut[3];
 		xSemaphoreTake(CAN_TX_Semaphore, portMAX_DELAY);
 		CAN_TX(0x123, msgOut);
+
 	}
+  #endif
 }
 
 volatile uint16_t lfo_index = 0;
@@ -625,7 +669,7 @@ inline int32_t avg_filter(int32_t input){
   int32_t output = 0;
   static uint8_t count = 0;
   lpf_buffer[count] = input;
-  count = (count+1) & 0b11; 
+  count = (count+1) & 0b11;
   for(uint8_t i = 0; i<4; i++){
     output += lpf_buffer[i] >> 2;
   }
@@ -643,21 +687,23 @@ void sampleBufferTask(void* pvParameters){
   int32_t LVout[12] = {0};
   int32_t UVout[12] = {0};
   uint32_t js_phase = 0;
-  int32_t js_vout = 0;  
+  int32_t js_vout = 0;
   bool alone;
+  #ifndef TEST_SAMPLEBUFFER
   while(1){
     // vTaskDelayUntil( &xLastWakeTime, xFrequency );
+  #endif
     alone = (g_myPos == 0);
-    xSemaphoreTake(sampleBufferSemaphore, portMAX_DELAY);
+    //xSemaphoreTake(sampleBufferSemaphore, portMAX_DELAY);
     for (uint32_t writeCtr = 0; writeCtr < SAMPLE_BUFFER_SIZE; writeCtr++) {
       if(lfo_index > 4400) lfo_index = 0;
       // Serial.println("got here\n");
       int32_t cVout = 0;
       uint16_t count=0;
-      // uint8_t RX_Message[8]={0};
-      // xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
-      // memcpy(RX_Message, RX_Message, 8);
-      // xSemaphoreGive(rxmsgMutex);
+      uint8_t RX_Message[8]={0};
+      xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
+      memcpy(RX_Message, RX_Message, 8);
+      xSemaphoreGive(rxmsgMutex);
       float AMmultiplier = (knob0.knobrotation) ? lfowave[lfo_index] : 1;
       float FMmultiplier = (knob0.knobrotation) ? ((lfowave[lfo_index])/1000)+1 : 1;
 
@@ -689,7 +735,7 @@ void sampleBufferTask(void* pvParameters){
       // else if(knob1.knobrotation == 3){
       //   create_custom(cVout, count, js_vout, js_phase);
       // }
-      
+
       // Dynamic scaling of cVout, appropriate since now in a task rather than the ISR
       cVout = (float)cVout / (float)count;
 
@@ -697,7 +743,7 @@ void sampleBufferTask(void* pvParameters){
       cVout = avg_filter(cVout);
 
       // Apply the LFO AM modulation if the knob is not on 0
-      
+
       // Increment the LFO index by the knob rotation value
       lfo_index += (knob0.knobrotation);
 
@@ -715,19 +761,54 @@ void sampleBufferTask(void* pvParameters){
       else
         sampleBuffer0[writeCtr] = cVout + 128;
     }
+  #ifndef TEST_SAMPLEBUFFER
   }
+  #endif
 }
 
-void CANDecodeTask(void * pvParameters){ 
-  bool local_octave_up;;
+void CANDecodeTask(void * pvParameters){
+
+  bool local_octave_up;
   uint32_t localCurrentStepSize = 0;
   uint8_t localRX_Message[8];
+
+
   uint8_t l_my_id;
   const TickType_t xFrequency = 30/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  #ifndef TEST_CANDECODER
   while(1){
+    Serial.println("got here");
     // vTaskDelayUntil(&xLastWakeTime, xFrequency);
     xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
+
+    #endif
+    #ifdef TEST_CANDECODER
+    for (int i = 0; i < 36; i++){
+      xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
+      xSemaphoreTake(handshakemutex, portMAX_DELAY);
+      // Serial.println(i);
+      if(localRX_Message[0] == HANDSHAKE_MSG_ID){
+        memcpy((void*)g_handshake_msg, localRX_Message, sizeof g_handshake_msg);
+        g_handshake_received = true;
+      }
+      else{
+        memcpy(RX_Message, localRX_Message, sizeof RX_Message);
+        if(localRX_Message[4] == 2){
+          __atomic_store_n(&g_keys_pressed_p1, localRX_Message[2], __ATOMIC_RELAXED);
+          __atomic_store_n(&g_keys_pressed_p2, localRX_Message[3], __ATOMIC_RELAXED);
+        }
+        else if(localRX_Message[4] == 3){
+          __atomic_store_n(&uoctave_1, localRX_Message[2], __ATOMIC_RELAXED);
+          __atomic_store_n(&uoctave_2, localRX_Message[3], __ATOMIC_RELAXED);
+        }
+      }
+      xSemaphoreGive(handshakemutex);
+      xSemaphoreGive(rxmsgMutex);
+    }
+
+    #endif
+    #ifndef TEST_CANDECODER
     xSemaphoreTake(handshakemutex, portMAX_DELAY);
     if(localRX_Message[0] == HANDSHAKE_MSG_ID){
       memcpy((void*)g_handshake_msg, localRX_Message, sizeof g_handshake_msg);
@@ -746,16 +827,31 @@ void CANDecodeTask(void * pvParameters){
     }
     xSemaphoreGive(handshakemutex);
     xSemaphoreGive(rxmsgMutex);
+    #endif
+  #ifndef TEST_CANDECODER
   }
+  #endif
 }
 
 
 #ifdef receiver
   void CAN_RX_ISR (void) {
+    #ifndef TEST_CAN_RX
     uint8_t RX_Message_ISR[8];
     uint32_t ID;
+    #endif
+    #ifdef TEST_CAN_RX
+    uint8_t RX_Message_ISR[8]={1,1,1,1,1,1,1};
+    uint32_t ID=0x123;
+    #endif
+    Serial.println("one");
+
     CAN_RX(ID, RX_Message_ISR);
+    Serial.println("two");
+    Serial.println(RX_Message_ISR[0]);
+    // Serial.println(msgInQ);
     xQueueSendFromISR(msgInQ,RX_Message_ISR, NULL);
+    Serial.println("three");
   }
 #endif
 
@@ -772,8 +868,12 @@ void setup() {
   msgOutQ = xQueueCreate(36,8);
   //semaphore
 
-  CAN_Init(false);
+  CAN_Init(true);
   CAN_RegisterRX_ISR(CAN_RX_ISR);
+
+
+  #ifndef DISABLE_THREADS
+
   TaskHandle_t candecode = NULL;
   xTaskCreate(
     CANDecodeTask,		/* Function that implements the task */
@@ -782,9 +882,10 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     2,			/* Task priority */
     &candecode);	/* Pointer to store the task handle */
+    CAN_RegisterTX_ISR(CAN_TX_ISR);
+  #endif
 
-  CAN_RegisterTX_ISR(CAN_TX_ISR);
- 
+
   setCANFilter(0x123,0x7ff);
 
   CAN_Start();
@@ -794,6 +895,7 @@ void setup() {
 
   CAN_TX_Semaphore = xSemaphoreCreateCounting(3,3);
   //initialise the RTOS scheduler
+  #ifndef DISABLE_THREADS
   TaskHandle_t scanKeysHandle = NULL;
   xTaskCreate(
     scanKeysTask,		/* Function that implements the task */
@@ -811,6 +913,8 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     1,			/* Task priority */
     &handshakehandle);
+  #endif
+  #ifndef DISABLE_THREADS
   TaskHandle_t joystickhandle = NULL;
   xTaskCreate(
     joysticktask,		/* Function that implements the task */
@@ -819,6 +923,7 @@ void setup() {
     NULL,			/* Parameter passed into the task */
     1,			/* Task priority */
     &joystickhandle);
+
 
   TaskHandle_t displayUpdateHandle = NULL;
   xTaskCreate(
@@ -829,14 +934,7 @@ void setup() {
     1,			/* Task priority */
     &displayUpdateHandle );
 
-  TaskHandle_t canSend = NULL;
-  xTaskCreate(
-    CANSendTask,		/* Function that implements the task */
-    "CANSend",		/* Text name for the task */
-    64,      		/* Stack size in words, not bytes */
-    NULL,			/* Parameter passed into the task */
-    1,			/* Task priority */
-    &canSend );	/* Pointer to store the task handle */
+  * Pointer to store the task handle */
 
   TaskHandle_t sampleBuffer = NULL;
   xTaskCreate(
@@ -847,12 +945,24 @@ void setup() {
     2,			/* Task priority */
     &sampleBuffer );	/* Pointer to store the task handle */
 
+  TaskHandle_t canSend = NULL;
+  xTaskCreate(
+    CANSendTask,		/* Function that implements the task */
+    "CANSend",		/* Text name for the task */
+    64,      		/* Stack size in words, not bytes */
+    NULL,			/* Parameter passed into the task */
+    1,			/* Task priority */
+    &canSend );
+    #endif
   //Timer setup
   TIM_TypeDef *Instance = TIM1;
   HardwareTimer *sampleTimer = new HardwareTimer(Instance);
+  #ifndef DISABLE_THREADS
+
   sampleTimer->setOverflow(22000, HERTZ_FORMAT);
   sampleTimer->attachInterrupt(sampleISR);
   sampleTimer->resume();
+  #endif
   //Set pin directions
   pinMode(RA0_PIN, OUTPUT);
   pinMode(RA1_PIN, OUTPUT);
@@ -880,12 +990,126 @@ void setup() {
   //Initialise UARTF
   Serial.begin(9600);
   Serial.println("Hello World");
+  #ifndef DISABLE_THREADS
   joystick_neutral_x = analogRead(JOYX_PIN);
   joystick_neutral_y = analogRead(JOYY_PIN);
-  g_initial_handshake = true;
   knob0.knobrotation = 0;
+  #endif
+  g_initial_handshake = true;
+
+  #ifndef DISABLE_THREADS
   vTaskStartScheduler();
+  #endif
+  #ifdef TEST_SCANKEYS
+	uint32_t startTime = micros();
+	for (int iter = 0; iter < 32; iter++) {
+		scanKeysTask(NULL);
+	}
+	Serial.println(micros()-startTime);
+	while(1);
+#endif
+#ifdef TEST_HANDSHAKE
+  uint32_t startTime = micros();
+  for (int iter = 0; iter < 32; iter++) {
+    handshaketask(NULL);
+  }
+  Serial.println(micros()-startTime);
+  while(1);
+#endif
+#ifdef TEST_DISPLAY
+  uint32_t startTime = micros();
+  for (int iter = 0; iter < 32; iter++) {
+    displayUpdateTask(NULL);
+  }
+  Serial.println(micros()-startTime);
+  while(1);
+#endif
+#ifdef TEST_JOYSTICK
+  uint32_t startTime = micros();
+  for (int iter = 0; iter < 32; iter++) {
+    joysticktask(NULL);
+  }
+  Serial.println(micros()-startTime);
+  while(1);
+#endif
+#ifdef TEST_SAMPLEBUFFER
+  uint32_t startTime = micros();
+  for (int iter = 0; iter < 32; iter++) {
+    sampleBufferTask(NULL);
+  }
+  Serial.println(micros()-startTime);
+  while(1);
+#endif
+#ifdef TEST_CANSEND
+  uint8_t TX_Message[8] = {0};
+  for (int iter = 0; iter < 3; iter++) {
+    xQueueSend(msgOutQ, TX_Message, 0);
+    // Serial.println(iter);
+  }
+  uint32_t startTime = micros();
+
+  CANSendTask(NULL);
+    // Serial.println(iter);
+
+  Serial.println(micros()-startTime);
+  while(1);
+#endif
+#ifdef TEST_CANDECODER
+  uint8_t RX_Message[8] = {1,1,1,1,1,1,1,1};
+  for (int iter = 0; iter < 36; iter++) {
+    xQueueSend(msgInQ, RX_Message, 0);
+    // Serial.println(iter);
+  }
+  uint32_t startTime = micros();
+
+  CANDecodeTask(NULL);
+    // Serial.println(iter);
+
+  Serial.println(micros()-startTime);
+  while(1);
+#endif
+#ifdef TEST_SAMPLEISR
+  uint32_t startTime = micros();
+  for (int iter = 0; iter < 32; iter++) {
+    sampleISR();
+    // Serial.println(iter);
+  }
+  Serial.println(micros()-startTime);
+  while(1);
+#endif
+#ifdef TEST_CAN_RX
+  // for (int iter = 0; iter < 32; iter++) {
+  //   xSemaphoreTakeFromISR(CAN_RX_Semaphore, NULL);
+  //   // Serial.println(iter);
+  // }
+  uint8_t RX_Message[8] = {0};
+  //for (int iter = 0; iter < 3; iter++) {
+    CAN_TX(0x123, RX_Message);
+    // Serial.println(iter);
+    //delay(1000);
+  //}
+
+  delay(2000);
+    // Serial.println(iter);
+
+  Serial.println("Done sending");
+  uint32_t startTime = micros();
+  // for (int iter = 0; iter < 3; iter++) {
+  CAN_RX_ISR();
+  //   Serial.println(iter);
+  //   // Serial.println(iter);
+  // }
+  Serial.println(micros()-startTime);
+  //while(1);
+#endif
+
 }
+
+
+
+
+
+
 
 void loop() {
   // put your main code here, to run repeatedly:
