@@ -532,9 +532,8 @@ void scanKeysTask(void * pvParameters) {
       __atomic_store(&g_HSEast, &l_HSEast, __ATOMIC_RELAXED);
       __atomic_store(&g_HSWest, &l_HSWest, __ATOMIC_RELAXED);
       xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-      // REMOVE THIS LINE
-      if(g_myPos == 0){ xQueueSend(msgOutQ, TX_Message, 0);}
-      else xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
+      // if(g_myPos == 0){ xQueueSend(msgOutQ, TX_Message, 0);}
+      // else xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
     xSemaphoreGive(keyArrayMutex);
   }
 }
