@@ -8,3 +8,6 @@
 
 ## Additional Information
   [Handshaking and auto-detection](doc/handshaking.md)
+  [Embedded Systems CW2, Synthesiser.md](https://github.com/bardia01/ES-synth-starter/files/11052594/Embedded.Systems.CW2.Synthesiser.md)
+
+
