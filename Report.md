@@ -107,7 +107,7 @@ The output using the various filters was tested with an oscilloscope, and based 
 
 Low-Frequency Oscillation was added to the system to create different sound effects for the Music Synthesizer. The two effects in our device are the Tremolo and the Vibrato effects. They modify the output sound by either modulating the frequency or the amplitude of the output signal. The modulation is done by multiplying either the output volume or the step size being incrementing the phase accumulator by a $5$Hz Sine wave, hence LFO. To achieve the volume modulation, the Sine wave was kept between 0 and 1 as those values seemed the most reasonable for modulating sound since they help create a wobble effect. However, for the frequency modulation, the deviation was kept small (+- 1/1000th of the base signal) to produce a subtle vibrato effect given the rate of signal compression and rarefaction.
 
-The LFO’s frequency is designed to be selected by the user as a choice of 3 values: 5Hz, 10Hz and 15Hz. The user can enable no LFO, AM LFO, FM LFO or both by using moving the joystick vertically. The user can modify the LFO frequencies by rotating knobs 1 and 2 on the keyboard.
+The LFO’s frequency is designed to be selected by the user as a choice of 3 values: 5Hz, 10Hz and 15Hz. The user can enable no LFO, AM LFO, FM LFO or both by moving the joystick vertically. The user can modify the LFO frequencies by rotating knobs 1 and 2 on the keyboard.
 
 The oscillation is done within the sample buffer task.
 
