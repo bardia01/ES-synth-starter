@@ -47,6 +47,9 @@ An auto handshake detection is implemented which, on startup, correctly interpre
 Handshaking is done in its own task and involves the exchange of handshake signals and messages on startup to determine the octave of the module. The handshake sequence is initiated from the leftmost module, and triggers sequential handshakes to the right by changing the values in the outBits array that latch onto the DFF. Doing so enables a check on the state of handshake inputs, and triggers the module to change its position, as well as send the next handshake message.
 
 Handshake messages contain the necessary information to distinguish a handshake message from a regular note message over the CAN bus. Once handshaking is complete, further handshake messages are not sent to avoid filling the message queue with unnecessary messages. Furthermore, these handshake message payloads contain information on previous module ‘positions’, so that the current module decoding its position is assigned the next correct value.
+
+### Joystick
+
 ### Filtering
 
 The sound outputted by the keyboard was always quite synthetic and electronic, especially with the Sawtooth wave, which is not common in real musical instruments. To make the sound more realistic, we included an FIR filter on the output. The FIR filter attenuates certain frequencies to make the sound more precise and controlled. The FIR filter is only applied on the output wave to smooth it.
