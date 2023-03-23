@@ -3,7 +3,7 @@
 
 This project explores real time programming through the development of a music synthesizer (keyboard). Base functionality was developed using the labs and afterward advanced features were added. All development aimed to improve the functionality of the synthesizer as a consumer device.
 
-![piano](./wavespics/piano.png "Piano")
+![piano](https://user-images.githubusercontent.com/92363026/227382450-6dae4b42-d87f-4492-a27c-57d4c129014e.png)
 
 ###### Knobs
     1. Knob0 - FM Frequency Control
