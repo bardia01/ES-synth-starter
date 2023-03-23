@@ -8,36 +8,25 @@
 
 
 uint8_t g_handshake_msg[8] = {0};
-// #define receiver
 
 #define HANDSHAKE_MSG_ID 255
 #define SAMPLE_BUFFER_SIZE 128
+#define STEREO_MSG_ID_0 254
+#define STEREO_MSG_ID_1 253
 
-// SENDER
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t handshakemutex;
 SemaphoreHandle_t rxmsgMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
 SemaphoreHandle_t sampleBufferSemaphore;
 
-#ifndef receiver
-  uint8_t MY_ID = 0; 
-#endif
-
 volatile bool g_initial_handshake;
 bool g_outBits[7] = {true, true, true, true, true, true, true};
 
-#ifdef receiver
-  uint8_t MY_ID = 8;
-#endif
-#define HANDSHAKE_MSG_ID 255
-#define STEREO_MSG_ID_0 254
-#define STEREO_MSG_ID_1 253
 //Constants
   const uint32_t interval = 100; //Display update interval
   QueueHandle_t msgInQ;
   QueueHandle_t msgOutQ;
-  //QueueHandle_t out_handshakeQ;
 
 //Pin definitions
   //Row select and enable
@@ -82,17 +71,16 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       digitalWrite(REN_PIN,LOW);
 }
 
+// Globals for the audio output
 volatile uint8_t loctave_1 = 0;
 volatile uint8_t loctave_2 = 0;
-
 volatile uint8_t uoctave_1 = 0;
 volatile uint8_t uoctave_2 = 0;
-
 volatile uint8_t g_control_from_joystick = 0;
 
 //Lab 1 section 1, reading a single row of the key matrix
-volatile int32_t currentStepSize;
-volatile uint8_t keyArray[7];
+volatile uint8_t currentStepSize;
+uint8_t keyArray[7];
 uint8_t readCols() {
   uint8_t cols = 0;
   cols |= digitalRead(C0_PIN) << 0; // 8'b0 bitor one pin << 0 
@@ -155,15 +143,11 @@ uint8_t g_myVol = 0;
 volatile int32_t cVout = 0;
 volatile int32_t Vout[12] = {0};
 
-// Add a local variable to store last cvout then print that
-int32_t frund = 0;
-uint32_t ID;
-volatile uint8_t RX_Message[8]={0};
-
+uint8_t RX_Message[8]={0};
 volatile uint8_t g_volume = 0;
 volatile uint8_t g_octave = 0;
 
-inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+inline void create_sawtooth(int32_t &cVout, uint8_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
@@ -193,7 +177,7 @@ inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
     }
   }
 }
-inline void create_square(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+inline void create_square(int32_t &cVout, uint8_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
@@ -225,7 +209,7 @@ inline void create_square(int32_t &cVout, uint16_t &count, int32_t vout_arr[], u
     }
   }
 }
-inline void create_sin(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+inline void create_sin(int32_t &cVout, uint8_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
@@ -257,7 +241,7 @@ inline void create_sin(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint
     }
   }
 }
-inline void create_triangle(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+inline void create_triangle(int32_t &cVout, uint8_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
@@ -337,7 +321,7 @@ void scanKeysTask(void * pvParameters) {
       digitalWrite(REN_PIN,0);     
     }
     uint8_t keyArrayCopy[7]; 
-    memcpy(keyArrayCopy,(void*)keyArray, sizeof keyArray);
+    memcpy(keyArrayCopy,keyArray, sizeof keyArray);
     xSemaphoreGive(keyArrayMutex);
       uint16_t keys_pressed_copy = 0;
     for(uint8_t i = 0; i < 3; i++){
@@ -493,7 +477,7 @@ void sampleBufferTask(void* pvParameters){
     for (uint32_t writeCtr = 0; writeCtr < SAMPLE_BUFFER_SIZE; writeCtr++) {
       if(lfo_index > 4400) lfo_index = 0;
       int32_t cVout = 0;
-      uint16_t count=0;
+      uint8_t count=0;
       // uint8_t RX_Message[8]={0};
       // xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
       // memcpy(RX_Message, RX_Message, 8);

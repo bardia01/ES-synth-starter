@@ -294,7 +294,7 @@ void sampleISR() {
 volatile bool press = 0;
 
 void writetx(uint8_t totx[], bool is_handshake=0){
-  if(!is_handshake) totx[0] = MY_ID;
+  if(!is_handshake) totx[0] = 0;
   else totx[0] = HANDSHAKE_MSG_ID;
   
   totx[1] = g_octave;
@@ -372,7 +372,6 @@ void displayUpdateTask(void * pvParameters){
     u8g2.drawStr(5,10, "Note:");
     if(g_keys_pressed_p1 || g_keys_pressed_p2 ) u8g2.drawStr(40,10,keyMap[currentStepSize].c_str());
     u8g2.setCursor(50, 10);
-    u8g2.print(frund, DEC);
     u8g2.drawStr(5,20, "Volume:");
     u8g2.setCursor(50,20);
     u8g2.print(g_volume,DEC); 
@@ -477,7 +476,7 @@ void sampleBufferTask(void* pvParameters){
     for (uint32_t writeCtr = 0; writeCtr < SAMPLE_BUFFER_SIZE; writeCtr++) {
       if(lfo_index > 4400) lfo_index = 0;
       int32_t cVout = 0;
-      uint16_t count=0;
+      uint8_t count=0;
       // uint8_t RX_Message[8]={0};
       // xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
       // memcpy(RX_Message, RX_Message, 8);
@@ -525,7 +524,6 @@ void sampleBufferTask(void* pvParameters){
       cVout = max(-128, min(127, (int)(cVout*multiplier)));
 
       // frund is your friend that helps you debuff
-      frund = cVout;
 
       // Write the filtered and clamped result to the output buffer (normalise the range)
       if (writeBuffer1)
