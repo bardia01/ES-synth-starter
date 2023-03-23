@@ -397,12 +397,11 @@ void CANSendTask(void * pvParameters){
 volatile bool g_handshake_received = 0;
 
 void handshaketask(void * pvParameters) {
-  const TickType_t xFrequency = 80/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 200/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
    vTaskDelayUntil( &xLastWakeTime, xFrequency );
    xSemaphoreTake(handshakemutex, portMAX_DELAY);
-   xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
    uint8_t keyarraytmp[8] = {0};
    uint8_t l_myPos;
    for(uint8_t i = 5; i < 7; i++){
@@ -435,7 +434,6 @@ void handshaketask(void * pvParameters) {
       }
       g_handshake_received = false;
     }
-    xSemaphoreGive(keyArrayMutex);
     xSemaphoreGive(handshakemutex);
   }
 }
@@ -517,14 +515,16 @@ void CANDecodeTask(void * pvParameters){
   uint8_t localRX_Message[8];
   uint8_t localRX_Message1[8] = {0};
   uint8_t l_my_id;
-  const TickType_t xFrequency = 40/portTICK_PERIOD_MS;
-  TickType_t xLastWakeTime = xTaskGetTickCount();
+  // const TickType_t xFrequency = 40/portTICK_PERIOD_MS;
+  // TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
     xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
     xSemaphoreTake(handshakemutex, portMAX_DELAY);
     if(localRX_Message[0] == HANDSHAKE_MSG_ID){
       memcpy((void*)g_handshake_msg, localRX_Message, sizeof g_handshake_msg);
       g_handshake_received = true;
+      g_stereo_keys_p1 = localRX_Message[2];
+      g_stereo_keys_p2 = localRX_Message[3];
     }
     else if(localRX_Message[0]==STEREO_MSG_ID_1){
       uoctave_1 = localRX_Message[2];
@@ -597,7 +597,7 @@ void setup() {
   "scanKeys",		/* Text name for the task */
   64,      		/* Stack size in words, not bytes */
   NULL,			/* Parameter passed into the task */
-  2,			/* Task priority */
+  3,			/* Task priority */
   &scanKeysHandle );	/* Pointer to store the task handle */
 
   TaskHandle_t handshakehandle = NULL;

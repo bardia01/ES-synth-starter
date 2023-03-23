@@ -397,7 +397,7 @@ void CANSendTask(void * pvParameters){
 volatile bool g_handshake_received = 0;
 
 void handshaketask(void * pvParameters) {
-  const TickType_t xFrequency = 80/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 200/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
    vTaskDelayUntil( &xLastWakeTime, xFrequency );
