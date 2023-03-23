@@ -576,44 +576,55 @@ void displayUpdateTask(void * pvParameters){
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     u8g2.setFont(u8g2_font_Georgia7px_te);
-    u8g2.clearBuffer();         // clear the internal memory
-    xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
-    xSemaphoreGive(rxmsgMutex);
-    #ifdef receiver
-      u8g2.drawStr(120,30, "R");
-    #endif
-    // 1st row
-    u8g2.drawStr(5,10, "Note:");
-    if(loctave_1 || loctave_2) u8g2.drawStr(30,10,keyMap[currentStepSize].c_str());
-    u8g2.drawStr(40,10, "LFO freq:");
-    u8g2.setCursor(93,10);
-    u8g2.print((lfo_fm_knob.knobrotation * 5), DEC);
-    u8g2.setCursor(108,10);
-    u8g2.print((lfo_am_knob.knobrotation * 5), DEC);
-    u8g2.setCursor(121,10);
+    u8g2.clearBuffer();         // clear the internal memory   #
+  #ifdef receiver
+    u8g2.drawStr(113,10, "R");
+    u8g2.setCursor(120,10);
     u8g2.print(g_myPos, DEC);
-
-    // 2nd row
-    u8g2.drawStr(5,20, "Vol:");
-    u8g2.setCursor(30,20);
-    u8g2.print(volume_knob.knobrotation,DEC);
-    std::string wave_type;
-    if(g_control_from_joystickx == 2) wave_type = "Sine";
-    else if(g_control_from_joystickx == 0) wave_type = "Sawtooth";
-    else if(g_control_from_joystickx == 1) wave_type = "Square";
-    else if(g_control_from_joystickx == 3) wave_type = "Triangle";
-    u8g2.drawStr(75,20, wave_type.c_str()); 
-
-    // 3rd row
-    u8g2.drawStr(5,30, "Oct:");
-    u8g2.setCursor(30,30);
-    u8g2.print(octave_knob.knobrotation,DEC);
-    if(g_control_from_joysticky==0) u8g2.drawStr(68,30, "AM LFO");
-    else if(g_control_from_joysticky==1) u8g2.drawStr(68,30, "FM LFO");
-    else if(g_control_from_joysticky == 2) u8g2.drawStr(68,30, "DUAL");
-    else if(g_control_from_joysticky == 3) u8g2.drawStr(68,30, "NO LFO");
-
-    u8g2.sendBuffer();          // transfer internal memory to the display
+  #else
+    u8g2.drawStr(113,10, "S");
+    u8g2.setCursor(120,10);
+    u8g2.print(g_myPos, DEC);
+  #endif
+  // 1st row
+  u8g2.drawStr(5,10, "Note:");
+  if(loctave_1 || loctave_2) u8g2.drawStr(32,10,keyMap[currentStepSize].c_str());
+  u8g2.drawStr(55,20, "LFO:");
+  if(g_control_from_joysticky!=3) u8g2.drawStr(55,30, "Freq:");
+  if(g_control_from_joysticky== 0){
+    u8g2.setCursor(95,30);
+    u8g2.print((lfo_am_knob.knobrotation * 5), DEC);
+  }
+  if(g_control_from_joysticky==2){
+    u8g2.setCursor(90,30);
+    u8g2.print((lfo_am_knob.knobrotation * 5), DEC);
+    u8g2.setCursor(115,30);
+    u8g2.print((lfo_fm_knob.knobrotation * 5), DEC);
+  }
+  if(g_control_from_joysticky==1){
+   u8g2.setCursor(95,30);
+   u8g2.print((lfo_fm_knob.knobrotation * 5), DEC);
+  }
+  // 2nd row
+  u8g2.drawStr(5,20, "Vol:");
+  u8g2.setCursor(30,20);
+  u8g2.print(volume_knob.knobrotation,DEC);
+  std::string wave_type;
+  if(g_control_from_joystickx == 2) wave_type = "Sine";
+  else if(g_control_from_joystickx == 0)wave_type = "Sawtooth";
+  else if(g_control_from_joystickx == 1) wave_type = "Square";
+  else if(g_control_from_joystickx == 3) wave_type = "Triangle";
+  u8g2.drawStr(55,10, wave_type.c_str()); 
+  // 3rd row
+  u8g2.drawStr(5,30, "Oct:");
+  u8g2.setCursor(30,30);
+  u8g2.print(octave_knob.knobrotation,DEC);
+  if(g_control_from_joysticky==0) u8g2.drawStr(90,20, "AM");
+  else if(g_control_from_joysticky==1) u8g2.drawStr(90,20, "FM");
+  else if(g_control_from_joysticky == 2){
+    u8g2.drawStr(85,20, "AM+FM");
+  }
+  else if(g_control_from_joysticky == 3) u8g2.drawStr(90,20, "NONE");  u8g2.sendBuffer();          // transfer internal memory to the display
     digitalToggle(LED_BUILTIN);
   }
 }
