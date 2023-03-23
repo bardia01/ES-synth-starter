@@ -808,7 +808,7 @@ void CANDecodeTask(void * pvParameters){
     }
 
     #endif
-    #ifndef TEST_CANDECODER
+    #ifdef TEST_CANDECODER
     xSemaphoreTake(handshakemutex, portMAX_DELAY);
     if(localRX_Message[0] == HANDSHAKE_MSG_ID){
       memcpy((void*)g_handshake_msg, localRX_Message, sizeof g_handshake_msg);
@@ -841,17 +841,14 @@ void CANDecodeTask(void * pvParameters){
     uint32_t ID;
     #endif
     #ifdef TEST_CAN_RX
-    uint8_t RX_Message_ISR[8]={1,1,1,1,1,1,1};
-    uint32_t ID=0x123;
+    uint8_t RX_Message_ISR[8];
+    uint32_t ID;
     #endif
-    Serial.println("one");
 
     CAN_RX(ID, RX_Message_ISR);
-    Serial.println("two");
     Serial.println(RX_Message_ISR[0]);
     // Serial.println(msgInQ);
-    xQueueSendFromISR(msgInQ,RX_Message_ISR, NULL);
-    Serial.println("three");
+    xQueueSend(msgInQ,RX_Message_ISR, 0);
   }
 #endif
 
