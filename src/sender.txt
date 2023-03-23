@@ -97,11 +97,13 @@ void setRow(uint8_t rowIdx){
   digitalWrite(RA2_PIN, rowIdx & 0x04);
   digitalWrite(REN_PIN,HIGH);
 }
-const int32_t stepSizes [] = {50953930, 54077542, 57396381, 60715219, 64229283, 68133799, 72233540, 76528508, 81018701, 85899345, 90975216, 96441538}; // = 2^32 * f / Fs = 2^32 * 440 / 22k
-//[64299564.93684364, 68124038.08814545, 72174973.15141818, 76469940.44741818, 81077269.0013091, 85899345.92, 91006452.48651637]
+constexpr uint32_t stepSizes [] = {50953930, 54077542, 57396381, 60715219, 64229283, 68133799, 72233540, 76528508, 81018701, 85899345, 90975216, 96441538};
+// = 2^32 * f / Fs = 2^32 * 440 / 22k
+
+// For displaying notes
 std::string keyMap[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 
-
+// Knob class
 class Knob {
   public:
     int upperLimit;
@@ -125,9 +127,7 @@ class Knob {
     }
 };
 
-Knob volume_knob(8, 0);
-Knob octave_knob(8, 0);
-
+// Globals for audio output
 volatile uint8_t g_stereo_keys_p1;
 volatile uint8_t g_stereo_keys_p2;
 volatile uint8_t g_keys_pressed_p1;
@@ -136,18 +136,13 @@ volatile uint8_t g_keys_pressed_p2;
 volatile uint8_t g_HSEast = 0;
 volatile uint8_t g_HSWest = 0;
 volatile uint8_t g_myPos = 0;
- 
-uint8_t g_myOct = 0;
-uint8_t g_myVol = 0;
-
-volatile int32_t cVout = 0;
-volatile int32_t Vout[12] = {0};
 
 uint8_t RX_Message[8]={0};
 volatile uint8_t g_volume = 0;
 volatile uint8_t g_octave = 0;
 
-inline void create_sawtooth(int32_t &cVout, uint8_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+// Functions to create waveforms
+inline void create_sawtooth(int32_t &cVout, uint8_t &count, int16_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
@@ -177,7 +172,7 @@ inline void create_sawtooth(int32_t &cVout, uint8_t &count, int32_t vout_arr[], 
     }
   }
 }
-inline void create_square(int32_t &cVout, uint8_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+inline void create_square(int32_t &cVout, uint8_t &count, int16_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
@@ -209,7 +204,7 @@ inline void create_square(int32_t &cVout, uint8_t &count, int32_t vout_arr[], ui
     }
   }
 }
-inline void create_sin(int32_t &cVout, uint8_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+inline void create_sin(int32_t &cVout, uint8_t &count, int16_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
@@ -241,7 +236,7 @@ inline void create_sin(int32_t &cVout, uint8_t &count, int32_t vout_arr[], uint3
     }
   }
 }
-inline void create_triangle(int32_t &cVout, uint8_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+inline void create_triangle(int32_t &cVout, uint8_t &count, int16_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
   for(int i=0; i<8;i++){
     if((keyint_0 & (1<<i)) != 0){ 
       count++;
@@ -274,6 +269,7 @@ inline void create_triangle(int32_t &cVout, uint8_t &count, int32_t vout_arr[], 
   }
 }
 
+// Global arrays for samplebuffers
 uint8_t sampleBuffer0[SAMPLE_BUFFER_SIZE];
 uint8_t sampleBuffer1[SAMPLE_BUFFER_SIZE];
 volatile bool writeBuffer1 = false;
@@ -291,27 +287,28 @@ void sampleISR() {
     analogWrite(OUTR_PIN, sampleBuffer1[readCtr++]);
 }
 
-volatile bool press = 0;
-
+// writetx function to fill an array with a message packet
 void writetx(uint8_t totx[], bool is_handshake=0){
-  if(!is_handshake) totx[0] = MY_ID;
+  if(!is_handshake) totx[0] = 0;
   else totx[0] = HANDSHAKE_MSG_ID;
-  
   totx[1] = g_octave;
-  totx[2] = press?g_keys_pressed_p1:totx[2];
-  totx[3] = press?g_keys_pressed_p2:totx[3];
+  totx[2] = g_keys_pressed_p1;
+  totx[3] = g_keys_pressed_p2;
   totx[4] = g_myPos;
 }
 
+// Task to read the keys
 void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   static int8_t an3,an2 =0;
+  // Variable to store the key
   static uint8_t localCurrentStepSize = 0;
   uint8_t TX_Message[8] = {0};
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
+    // Access keyArray here
     for(uint8_t i = 0; i < 7; i++){
       setRow(i);
       digitalWrite(OUT_PIN,g_outBits[i]); //Set value to latch in DFF
@@ -322,32 +319,22 @@ void scanKeysTask(void * pvParameters) {
     }
     uint8_t keyArrayCopy[7]; 
     memcpy(keyArrayCopy,keyArray, sizeof keyArray);
-    xSemaphoreGive(keyArrayMutex);
-      uint16_t keys_pressed_copy = 0;
+    uint16_t keys_pressed_copy = 0;
     for(uint8_t i = 0; i < 3; i++){
       for(uint8_t j = 0; j < 4; j++){
         if(!(keyArrayCopy[i] & (1 << j))){ 
           localCurrentStepSize = i*4 + j;
-          press = 1;
           keys_pressed_copy |= (1 << (i*4 + j));
           }
         }
       }
       uint8_t keys_pressed_p1 = keys_pressed_copy & 0xff;
       uint8_t keys_pressed_p2 = (keys_pressed_copy >> 8) & 0xff;
-      __atomic_store(&g_keys_pressed_p1, &keys_pressed_p1, __ATOMIC_RELAXED);
-      __atomic_store(&g_keys_pressed_p2, &keys_pressed_p2, __ATOMIC_RELAXED);
-
+      g_keys_pressed_p1 = keys_pressed_p1;
+      g_keys_pressed_p2 = keys_pressed_p2;
       writetx(TX_Message, false);
-      
-      __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
-      // u8g2.sendBuffer();          // transfer internal memory to the display
-      xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-      volume_knob.getValue(an3);
-      octave_knob.getValue(an2);
+      currentStepSize = localCurrentStepSize;
       xSemaphoreGive(keyArrayMutex);
-      an3 = ((keyArrayCopy[3]) & 0x03);
-      an2 = (((keyArrayCopy[3]) & 0x0C) >> 2);
 
       uint8_t l_HSEast = (((keyArrayCopy[6]) & 0x08) >> 3);
       uint8_t l_HSWest = (((keyArrayCopy[5]) & 0x08) >> 3);
@@ -356,6 +343,8 @@ void scanKeysTask(void * pvParameters) {
       xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
   }
 }
+
+// Task to update the display
 void displayUpdateTask(void * pvParameters){
   const TickType_t xFrequency = 80/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -372,7 +361,6 @@ void displayUpdateTask(void * pvParameters){
     u8g2.drawStr(5,10, "Note:");
     if(g_keys_pressed_p1 || g_keys_pressed_p2 ) u8g2.drawStr(40,10,keyMap[currentStepSize].c_str());
     u8g2.setCursor(50, 10);
-    u8g2.print(frund, DEC);
     u8g2.drawStr(5,20, "Volume:");
     u8g2.setCursor(50,20);
     u8g2.print(g_volume,DEC); 
@@ -392,17 +380,17 @@ void displayUpdateTask(void * pvParameters){
   }
 }
 
-volatile uint8_t g_msgOut[8];
 void CANSendTask(void * pvParameters){
   uint8_t msgOut[8];
 	while (1) {
     xQueueReceive(msgOutQ, msgOut, portMAX_DELAY);
-    g_msgOut[2] = msgOut[2];
-    g_msgOut[3] = msgOut[3];
 		xSemaphoreTake(CAN_TX_Semaphore, portMAX_DELAY);
 		CAN_TX(0x123, msgOut);
 	}
 }
+
+
+// Global for handshaking 
 volatile bool g_handshake_received = 0;
 
 void handshaketask(void * pvParameters) {
@@ -423,32 +411,34 @@ void handshaketask(void * pvParameters) {
     }
     uint8_t l_HSEast = (((keyarraytmp[6]) & 0x08) >> 3);
     uint8_t l_HSWest = (((keyarraytmp[5]) & 0x08) >> 3);
-  
+
+    // If the handshake msg has been received
     if(g_handshake_received == 1){
       if(l_HSWest == 1 && g_myPos ==0){
         l_myPos = max((int)g_myPos, g_handshake_msg[4] + 1);
         bool l_outBits[7] = {true, true, true, true, true, false, false};
-        __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
+        g_myPos = l_myPos;
         uint8_t handshake_msg[8] = {0};
         writetx(handshake_msg, true);
         xQueueSend(msgOutQ, handshake_msg, portMAX_DELAY);
         g_initial_handshake = false;
         for(uint8_t i = 5; i < 7; i++){
           setRow(i);
-          digitalWrite(OUT_PIN,l_outBits[i]); //Set value to latch in DFF
+          digitalWrite(OUT_PIN,l_outBits[i]);
           digitalWrite(REN_PIN,1);   
           digitalWrite(REN_PIN,0);     
         }
-        memcpy((void*)g_outBits, l_outBits, sizeof g_outBits);
+        memcpy(g_outBits, l_outBits, sizeof g_outBits);
       }
-      __atomic_store_n(&g_handshake_received, false, __ATOMIC_RELAXED);
+      g_handshake_received = false;
     }
     xSemaphoreGive(keyArrayMutex);
     xSemaphoreGive(handshakemutex);
   }
 }
 
-inline int32_t avg_filter(int32_t input){
+// Averaging filter
+int32_t avg_filter(int32_t input){
   static int32_t lpf_buffer[4] = {0};
   int32_t output = 0;
   static uint8_t count = 0;
@@ -460,53 +450,46 @@ inline int32_t avg_filter(int32_t input){
   return output;
 }
 
-volatile uint16_t lfo_index = 0;
 
 void sampleBufferTask(void* pvParameters){
   static uint32_t phaseAccLO[12] = {0};
   static uint32_t phaseAccUO[12] = {0};
   static uint32_t phaseAccR[12] = {0};
-  int32_t RVout[12] = {0};
-  int32_t LVout[12] = {0};
-  int32_t UVout[12] = {0};
+  int16_t RVout[12] = {0};
+  int16_t LVout[12] = {0};
+  int16_t UVout[12] = {0};
   bool alone;
   while(1){
-    // vTaskDelayUntil( &xLastWakeTime, xFrequency );
     alone = (g_myPos == 0);
     xSemaphoreTake(sampleBufferSemaphore, portMAX_DELAY);
     for (uint32_t writeCtr = 0; writeCtr < SAMPLE_BUFFER_SIZE; writeCtr++) {
-      if(lfo_index > 4400) lfo_index = 0;
       int32_t cVout = 0;
       uint8_t count=0;
-      // uint8_t RX_Message[8]={0};
-      // xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
-      // memcpy(RX_Message, RX_Message, 8);
-      // xSemaphoreGive(rxmsgMutex);
 
       if(g_control_from_joystick == 0){
         //sawtooth
         //time to try lfo sine wave modulation ting
         create_sawtooth(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
         create_sawtooth(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
-        create_sawtooth(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
+        create_sawtooth(cVout, count, RVout, phaseAccR, g_stereo_keys_p1, g_stereo_keys_p2, 0);
       }
       else if(g_control_from_joystick == 1){
         // square wave
         create_square(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
         create_square(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
-        create_square(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
+        create_square(cVout, count, RVout, phaseAccR, g_stereo_keys_p1, g_stereo_keys_p2, 0);
       }
       else if(g_control_from_joystick == 2){
         //sinwave
       create_sin(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
       create_sin(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
-      create_sin(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
+      create_sin(cVout, count, RVout, phaseAccR, g_stereo_keys_p1, g_stereo_keys_p2, 0);
       }
       else if(g_control_from_joystick == 3){
         //triangle wave
       create_triangle(cVout, count, LVout, phaseAccLO, loctave_1, loctave_2, alone-1);
       create_triangle(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1);
-      create_triangle(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0);
+      create_triangle(cVout, count, RVout, phaseAccR, g_stereo_keys_p1, g_stereo_keys_p2, 0);
       }
       
       // Dynamic scaling of cVout, appropriate since now in a task rather than the ISR
@@ -515,17 +498,8 @@ void sampleBufferTask(void* pvParameters){
       // Filter the scaled cVout and return the result back into the same variable
       cVout = avg_filter(cVout);
 
-      // Apply the LFO AM modulation if the knob is not on 0
-      // float multiplier = (knob0.knobrotation) ? lfowave[lfo_index] : 1;
-      float multiplier = 1;
-      // Increment the LFO index by the knob rotation value
-      // lfo_index += (knob0.knobrotation);
-
       // Apply the multiplier to the cVout and clamp the result to the 8-bit range
-      cVout = max(-128, min(127, (int)(cVout*multiplier)));
-
-      // frund is your friend that helps you debuff
-      frund = cVout;
+      cVout = max(-128, min(127, (int)(cVout)));
 
       // Write the filtered and clamped result to the output buffer (normalise the range)
       if (writeBuffer1)
@@ -543,7 +517,6 @@ void CANDecodeTask(void * pvParameters){
   const TickType_t xFrequency = 40/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while(1){
-    // vTaskDelayUntil(&xLastWakeTime, xFrequency);
     xQueueReceive(msgInQ, localRX_Message, portMAX_DELAY);
     xSemaphoreTake(handshakemutex, portMAX_DELAY);
     if(localRX_Message[0] == HANDSHAKE_MSG_ID){
@@ -554,15 +527,17 @@ void CANDecodeTask(void * pvParameters){
       uoctave_1 = localRX_Message[2];
       uoctave_2 = localRX_Message[3];
       g_control_from_joystick = localRX_Message[5];
+      g_volume = localRX_Message[1] & 0x0f;
+      g_octave = localRX_Message[1] >> 4;
     }
     else if(localRX_Message[0]==STEREO_MSG_ID_0){
       g_stereo_keys_p1 = localRX_Message[2];
       g_stereo_keys_p2 = localRX_Message[3];
       loctave_1 = localRX_Message[5];
       loctave_2 = localRX_Message[6];
+      g_volume = localRX_Message[1] & 0x0f;
+      g_octave = localRX_Message[1] >> 4;
     }
-    g_volume = localRX_Message[1] & 0x0f;
-    g_octave = localRX_Message[1] >> 4;
     xSemaphoreGive(handshakemutex);
     xSemaphoreGive(rxmsgMutex);
   }
