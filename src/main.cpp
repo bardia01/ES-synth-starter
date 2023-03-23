@@ -75,17 +75,6 @@ volatile bool g_handshake_received = 0;
 //Display driver object
 U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
 
-// void gensin(){
-//   float step = 2*3.14159265358979323846 / 1024;
-//   float phase = 0;
-//   for(uint32_t i = 0; i<1024; i++){
-//     //Serial.println(sin(phase));
-//     sinwave[i] = (int)(127.0*sin(phase));
-//     //Serial.println(sinwave[i]);
-//     phase += step;
-//   }
-// }
-
 //Function to set outputs using key matrix
 void setOutMuxBit(const uint8_t bitIdx, const bool value) {
       digitalWrite(REN_PIN,LOW);
@@ -102,9 +91,6 @@ volatile uint8_t loctave_2 = 0;
 
 volatile uint8_t uoctave_1 = 0;
 volatile uint8_t uoctave_2 = 0;
-
-volatile uint8_t g_control_from_joystick = 0;
-
 
 //Lab 1 section 1, reading a single row of the key matrix
 volatile int32_t currentStepSize = 0;
@@ -158,8 +144,8 @@ class Knob {
 
 Knob volume_knob(8, 0);
 Knob octave_knob(8, 0);
-Knob knob1(3,0);
-Knob lfo_knob(3,0);
+Knob lfo_am_knob(3,0);
+Knob lfo_fm_knob(3,0);
 
 volatile uint8_t g_keys_pressed_p1;
 volatile uint8_t g_keys_pressed_p2;
@@ -197,7 +183,7 @@ inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
       else{
         phase_arr[i] += stepSizes[i] >> (-octave + 4 - octave_knob.knobrotation);
       }
-      if(g_control_from_joysticky==1) phase_arr[i]*=multiplier;
+      if(g_control_from_joysticky==1 || (g_control_from_joysticky == 2)) phase_arr[i]*=multiplier;
       vout_arr[i] = (phase_arr[i] >> 24) - 128; 
       vout_arr[i] = vout_arr[i] >> (8 - volume_knob.knobrotation);
       cVout += vout_arr[i];
@@ -212,7 +198,7 @@ inline void create_sawtooth(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
       else{
         phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - octave_knob.knobrotation);
       }
-      if(g_control_from_joysticky==1) phase_arr[i+8]*=multiplier;
+      if(g_control_from_joysticky==1 || (g_control_from_joysticky == 2)) phase_arr[i+8]*=multiplier;
       vout_arr[i+8] = (phase_arr[i+8] >> 24) - 128; 
       vout_arr[i+8] = vout_arr[i+8] >> (8 - volume_knob.knobrotation);
       cVout += vout_arr[i+8];
@@ -229,7 +215,7 @@ inline void create_square(int32_t &cVout, uint16_t &count, int32_t vout_arr[], u
       else{
         phase_arr[i] += stepSizes[i] >> (-octave + 4 - octave_knob.knobrotation);
       }
-      if(g_control_from_joysticky==1) phase_arr[i]*=multiplier;
+      if(g_control_from_joysticky==1 || (g_control_from_joysticky == 2)) phase_arr[i]*=multiplier;
       int32_t d = (phase_arr[i] >> 24) - 128; 
       vout_arr[i] = (d>0) ? 127 : -128;
       vout_arr[i] = vout_arr[i] >> (8 - volume_knob.knobrotation);
@@ -245,7 +231,7 @@ inline void create_square(int32_t &cVout, uint16_t &count, int32_t vout_arr[], u
       else{
         phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - octave_knob.knobrotation);
       }
-      if(g_control_from_joysticky==1) phase_arr[i+8]*=multiplier;
+      if(g_control_from_joysticky==1 || (g_control_from_joysticky == 2)) phase_arr[i+8]*=multiplier;
       int32_t d = (phase_arr[i+8] >> 24) - 128; 
       vout_arr[i+8] = (d>0) ? 127 : -128;
       vout_arr[i+8] = vout_arr[i+8] >> (8 - volume_knob.knobrotation);
@@ -264,7 +250,7 @@ inline void create_sin(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint
         // octave_knob.knobrotation is [0,3]
         phase_arr[i] += stepSizes[i] >> (-octave + 4 - octave_knob.knobrotation);
       }
-      if(g_control_from_joysticky==1) phase_arr[i]*=multiplier;
+      if(g_control_from_joysticky==1 || (g_control_from_joysticky == 2)) phase_arr[i]*=multiplier;
       int32_t d = (phase_arr[i] >> 22); 
       vout_arr[i] = sinwave[d];
       vout_arr[i] = vout_arr[i] >> (8 - volume_knob.knobrotation);
@@ -280,7 +266,7 @@ inline void create_sin(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint
       else{
         phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - octave_knob.knobrotation);
       }
-      if(g_control_from_joysticky==1) phase_arr[i+8]*=multiplier;
+      if(g_control_from_joysticky==1 || (g_control_from_joysticky == 2)) phase_arr[i+8]*=multiplier;
       int32_t d = phase_arr[i+8] >> 22; 
       vout_arr[i+8] = sinwave[d];
       vout_arr[i+8] = vout_arr[i+8] >> (8 - volume_knob.knobrotation);
@@ -298,7 +284,7 @@ inline void create_triangle(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
       else{
         phase_arr[i] += stepSizes[i] >> (-octave + 4 - octave_knob.knobrotation);
       }
-      if(g_control_from_joysticky==1) phase_arr[i]*=multiplier;
+      if(g_control_from_joysticky==1 || (g_control_from_joysticky == 2)) phase_arr[i]*=multiplier;
       int32_t d = (phase_arr[i] >> 24) - 128; 
       vout_arr[i] = (d < 0 ) ? (d << 1) + 127 : 127 - (d << 1);
       vout_arr[i] = vout_arr[i] >> (8 - volume_knob.knobrotation);
@@ -314,7 +300,7 @@ inline void create_triangle(int32_t &cVout, uint16_t &count, int32_t vout_arr[],
       else{
         phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - octave_knob.knobrotation);
       }
-      if(g_control_from_joysticky==1) phase_arr[i+8]*=multiplier;
+      if(g_control_from_joysticky==1 || (g_control_from_joysticky == 2)) phase_arr[i+8]*=multiplier;
       int32_t d = (phase_arr[i+8] >> 24) - 128; 
       vout_arr[i+8] = (d < 0 ) ? (d << 1) + 127 : 127 - (d << 1);
       vout_arr[i+8] = vout_arr[i+8] >> (8 - volume_knob.knobrotation);
@@ -349,7 +335,7 @@ volatile bool press = 0;
 uint8_t g_myPos = 0;
 
 void writetx(uint8_t totx[], uint8_t whichmsg=0){
-  if(whichmsg == 'H'){
+  if(whichmsg == HANDSHAKE_MSG_ID){
     totx[0] = HANDSHAKE_MSG_ID;
     totx[1] = (octave_knob.knobrotation << 4) | volume_knob.knobrotation;
     totx[2] = g_keys_pressed_p1;
@@ -367,12 +353,13 @@ void writetx(uint8_t totx[], uint8_t whichmsg=0){
     totx[5] = loctave_1;
     totx[6] = loctave_2;  }
   else if(whichmsg == STEREO_MSG_ID_1){
-    totx[0] = STEREO_MSG_ID_1; // THIS SHOULDN'T HAPPEN
+    totx[0] = STEREO_MSG_ID_1;
     totx[1] = (octave_knob.knobrotation << 4) | volume_knob.knobrotation;
     totx[2] = uoctave_1;
     totx[3] = uoctave_2;
     totx[4] = g_myPos;
-    totx[5] = g_control_from_joystick;
+    totx[5] = g_control_from_joystickx;
+    totx[6] = g_control_from_joysticky;
   }
 }
 
@@ -386,7 +373,7 @@ void handshaketask(void * pvParameters) {
    vTaskDelayUntil( &xLastWakeTime, xFrequency );
    xSemaphoreTake(handshakemutex, portMAX_DELAY);
    xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-   uint8_t keyarraytmp[2];
+   uint8_t keyarraytmp[8] = {0};
    uint8_t l_myPos;
    for(uint8_t i = 5; i < 7; i++){
       setRow(i);
@@ -404,7 +391,7 @@ void handshaketask(void * pvParameters) {
         l_myPos = max((int)g_myPos, g_handshake_msg[4] + 1);
         __atomic_store(&g_myPos, &l_myPos, __ATOMIC_RELAXED);
         uint8_t handshake_msg[8] = {0};
-        writetx(handshake_msg, 'H');
+        writetx(handshake_msg, HANDSHAKE_MSG_ID);
         xQueueSend(msgOutQ, handshake_msg, portMAX_DELAY);
         g_initial_handshake = false;
         for(uint8_t i = 0; i < 7; i++){
@@ -458,14 +445,27 @@ void joysticktask(void * pvParameters){
     if(active && (g_toggle_joyy==0)){
       //joy stick has moved up
       if(g_joyy < g_joyy_prev - JOYSTICK_HYSTERISIS_THRESHOLD_SMALL){
-        l_control_from_joysticky = l_control_from_joysticky==1?0:1; // 1 indicates up
+        l_toggle_joyy = 1; // 1 indicates up
       }
       //joy stick has moved down
       else if(g_joyy > g_joyy_prev + JOYSTICK_HYSTERISIS_THRESHOLD_SMALL){
-        l_control_from_joysticky = l_control_from_joysticky==1?0:1; // -1 indicates down
+        l_toggle_joyy = -1; // -1 indicates down
       }
     }
-  
+    else{
+      l_toggle_joyy = 0;
+    }
+
+    if(l_control_from_joysticky + l_toggle_joyy < 0){
+      l_control_from_joysticky = 3;
+    }
+    else if(l_control_from_joysticky + l_toggle_joyy > 3){
+      l_control_from_joysticky = 0;
+    }
+    else{
+      l_control_from_joysticky += l_toggle_joyy;
+    }
+
     
     if(active && (g_toggle_joyx == 0)){
       //joy stick has moved right
@@ -548,8 +548,8 @@ void scanKeysTask(void * pvParameters) {
       // Assign knob values to knob objects
       volume_knob.getValue(an3);
       octave_knob.getValue(an2);
-      knob1.getValue(an1);
-      lfo_knob.getValue(an0);
+      lfo_am_knob.getValue(an1);
+      lfo_fm_knob.getValue(an0);
       
 
       uint8_t l_HSEast = (((keyArrayCopy[6]) & 0x08) >> 3);
@@ -575,37 +575,39 @@ void displayUpdateTask(void * pvParameters){
 	    CAN_RX(ID, RX_Message);
     #endif
     xSemaphoreGive(rxmsgMutex);
-  
-    u8g2.drawStr(95,10, "Pos:");
-    u8g2.setCursor(120,10);
-    u8g2.print(g_myPos, DEC);
     #ifdef receiver
       u8g2.drawStr(120,30, "R");
     #endif
+    // 1st row
     u8g2.drawStr(5,10, "Note:");
     if(loctave_1 || loctave_2) u8g2.drawStr(30,10,keyMap[currentStepSize].c_str());
-    u8g2.setCursor(50,10);
-    u8g2.print(g_joyx, DEC);
-    u8g2.setCursor(70,10);
-    u8g2.print(g_joyy, DEC);
-    u8g2.drawStr(5,20, "Volume:");
-    u8g2.setCursor(50,20);
+    u8g2.drawStr(40,10, "LFO freq:");
+    u8g2.setCursor(93,10);
+    u8g2.print((lfo_fm_knob.knobrotation * 5), DEC);
+    u8g2.setCursor(108,10);
+    u8g2.print((lfo_am_knob.knobrotation * 5), DEC);
+    u8g2.setCursor(121,10);
+    u8g2.print(g_myPos, DEC);
+
+    // 2nd row
+    u8g2.drawStr(5,20, "Vol:");
+    u8g2.setCursor(30,20);
     u8g2.print(volume_knob.knobrotation,DEC);
     std::string wave_type;
     if(g_control_from_joystickx == 2) wave_type = "Sine";
     else if(g_control_from_joystickx == 0) wave_type = "Sawtooth";
     else if(g_control_from_joystickx == 1) wave_type = "Square";
     else if(g_control_from_joystickx == 3) wave_type = "Triangle";
-    u8g2.drawStr(65,20, wave_type.c_str()); 
-    u8g2.drawStr(5,30, "Octave:");
-    u8g2.setCursor(42,30);
-    u8g2.print(knob2.knobrotation,DEC);
-    if(g_control_from_joysticky==0)
-    u8g2.drawStr(52,30, "AM LFO:");
-    else if(g_control_from_joysticky==1)
-    u8g2.drawStr(52,30, "FM LFO:");
-    u8g2.setCursor(105,30);
-    u8g2.print(lfo_knob.knobrotation,DEC); 
+    u8g2.drawStr(75,20, wave_type.c_str()); 
+
+    // 3rd row
+    u8g2.drawStr(5,30, "Oct:");
+    u8g2.setCursor(30,30);
+    u8g2.print(octave_knob.knobrotation,DEC);
+    if(g_control_from_joysticky==0) u8g2.drawStr(68,30, "AM LFO");
+    else if(g_control_from_joysticky==1) u8g2.drawStr(68,30, "FM LFO");
+    else if(g_control_from_joysticky == 2) u8g2.drawStr(68,30, "DUAL");
+    else if(g_control_from_joysticky == 3) u8g2.drawStr(68,30, "NO LFO");
 
     u8g2.sendBuffer();          // transfer internal memory to the display
     digitalToggle(LED_BUILTIN);
@@ -624,7 +626,9 @@ void CANSendTask(void * pvParameters){
 	}
 }
 
-volatile uint16_t lfo_index = 0;
+volatile uint16_t lfo_am_index = 0;
+volatile uint16_t lfo_fm_index = 0;
+
 
 constexpr float gaussian_kernel[7] = {0.005977, 0.060598, 0.241732, 0.492446, 0.241732, 0.060598, 0.005977};
 constexpr float gaussian_kernel_big[21] = {0.0005,	0.0015,	0.0039,	0.0089,	0.0183,	0.0334,	0.0549,	0.0807,	0.1063,	0.1253,	0.1324,	0.1253,	0.1063,	0.0807,	0.0549,	0.0334,	0.0183,	0.0089,	0.0039,	0.0015,	0.0005};
@@ -671,7 +675,8 @@ void sampleBufferTask(void* pvParameters){
     alone = (g_myPos == 0);
     xSemaphoreTake(sampleBufferSemaphore, portMAX_DELAY);
     for (uint32_t writeCtr = 0; writeCtr < SAMPLE_BUFFER_SIZE; writeCtr++) {
-      if(lfo_index > 4400) lfo_index = 0;
+      if(lfo_fm_index > 4400) lfo_fm_index = 0;
+      if(lfo_am_index > 4400) lfo_am_index = 0;
       // Serial.println("got here\n");
       int32_t cVout = 0;
       uint16_t count=0;
@@ -679,8 +684,8 @@ void sampleBufferTask(void* pvParameters){
       // xSemaphoreTake(rxmsgMutex, portMAX_DELAY);
       // memcpy(RX_Message, RX_Message, 8);
       // xSemaphoreGive(rxmsgMutex);
-      float AMmultiplier = (knob0.knobrotation) ? lfowave[lfo_index] : 1;
-      float FMmultiplier = (knob0.knobrotation) ? ((lfowave[lfo_index])/1000)+1 : 1;
+      float AMmultiplier = (lfo_am_knob.knobrotation) ? lfowave[lfo_am_index] : 1;
+      float FMmultiplier = (lfo_fm_knob.knobrotation) ? ((lfowave[lfo_fm_index])/1000)+1 : 1;
 
       if(g_control_from_joystickx == 0){
         //sawtooth
@@ -707,7 +712,7 @@ void sampleBufferTask(void* pvParameters){
       create_triangle(cVout, count, UVout, phaseAccUO, uoctave_1, uoctave_2, 1, FMmultiplier);
       create_triangle(cVout, count, RVout, phaseAccR, g_keys_pressed_p1, g_keys_pressed_p2, 0, FMmultiplier);
       }
-      // else if(knob1.knobrotation == 3){
+      // else if(lfo_am_knob.knobrotation == 3){
       //   create_custom(cVout, count, js_vout, js_phase);
       // }
       
@@ -720,9 +725,10 @@ void sampleBufferTask(void* pvParameters){
       // Apply the LFO AM modulation if the knob is not on 0
       
       // Increment the LFO index by the knob rotation value
-      lfo_index += (knob0.knobrotation);
+      lfo_am_index += (lfo_am_knob.knobrotation);
+      lfo_fm_index += (lfo_fm_knob.knobrotation);
 
-      if(g_control_from_joysticky==0) cVout = cVout*AMmultiplier;
+      if(g_control_from_joysticky==0 || (g_control_from_joysticky == 2)) cVout = cVout*AMmultiplier;
 
       // Apply the multiplier to the cVout and clamp the result to the 8-bit range
       cVout = max(-128, min(127, (int)cVout));
@@ -911,7 +917,8 @@ void setup() {
   joystick_neutral_x = analogRead(JOYX_PIN);
   joystick_neutral_y = analogRead(JOYY_PIN);
   g_initial_handshake = true;
-  lfo_knob.knobrotation = 0;
+  lfo_fm_knob.knobrotation = 0;
+  lfo_am_knob.knobrotation = 0;
   vTaskStartScheduler();
 }
 

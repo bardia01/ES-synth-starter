@@ -397,7 +397,7 @@ void displayUpdateTask(void * pvParameters){
     else if(g_control_from_joystick == 0) wave_type = "Sawtooth";
     else if(g_control_from_joystick == 1) wave_type = "Square";
     else if(g_control_from_joystick == 3) wave_type = "Triangle";
-    u8g2.drawStr(65,20, wave_type.c_str()); 
+    u8g2.drawStr(80,20, wave_type.c_str()); 
     u8g2.drawStr(5,30, "Octave:");
     u8g2.setCursor(50,30);
     u8g2.print(g_octave,DEC);
@@ -428,7 +428,7 @@ void handshaketask(void * pvParameters) {
    vTaskDelayUntil( &xLastWakeTime, xFrequency );
    xSemaphoreTake(handshakemutex, portMAX_DELAY);
    xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-   uint8_t keyarraytmp[2];
+   uint8_t keyarraytmp[8] = {0};
    uint8_t l_myPos;
    for(uint8_t i = 5; i < 7; i++){
       setRow(i);
