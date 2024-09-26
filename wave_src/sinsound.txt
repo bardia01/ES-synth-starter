@@ -1,0 +1,20 @@
+if((RX_Message[2] & (1<<i)) != 0){ 
+          count++; 
+          if(RX_Message[1] > 4){
+            phaseAcc[i] += stepSizes[i] << (RX_Message[1] - 4);
+          }
+          else{
+            phaseAcc[i] += stepSizes[i] >> (4 - RX_Message[1]);
+          }
+
+          int32_t d = (phaseAcc[i] >> 24) - 128;
+          Vout[i] = (d < 0) ? (d << 1) + 127 : 127 - (d << 1);  
+          Vout[i] = Vout[i] >> (8 - knob3.knobrotation);
+          if(sinsound){
+            float tmp = lfo[phaseAcc[i] >> 20];
+            tmp = tmp / 128.0;
+            cVout += Vout[i] * tmp;
+          }
+          else
+            cVout += Vout[i];
+        }

@@ -1,0 +1,32 @@
+inline void create_square(int32_t &cVout, uint16_t &count, int32_t vout_arr[], uint32_t phase_arr[], uint8_t keyint_0, uint8_t keyint_1, int8_t octave){
+  for(int i=0; i<8;i++){
+    if((keyint_0 & (1<<i)) != 0){ 
+      count++;
+      if(knob2.knobrotation + octave > 4){
+        phase_arr[i] += stepSizes[i] << (knob2.knobrotation - 4 + octave);
+      }
+      else{
+        phase_arr[i] += stepSizes[i] >> (-octave + 4 - knob2.knobrotation);
+      }
+      int32_t d = (phase_arr[i] >> 24) - 128; 
+      vout_arr[i] = (d>0) ? 127 : -128;
+      vout_arr[i] = vout_arr[i] >> (8 - knob3.knobrotation);
+      cVout += vout_arr[i];
+    }
+  }
+  for(int i=0; i<4;i++){
+    if((keyint_1 & (1<<i)) != 0){
+      count++;
+      if(knob2.knobrotation + octave > 4){
+        phase_arr[i+8] += stepSizes[i+8] << (knob2.knobrotation - 4 + octave);
+      }
+      else{
+        phase_arr[i+8] += stepSizes[i+8] >> (-octave + 4 - knob2.knobrotation);
+      }
+      int32_t d = (phase_arr[i+8] >> 24) - 128; 
+      vout_arr[i+8] = (d>0) ? 127 : -128;
+      vout_arr[i+8] = vout_arr[i+8] >> (8 - knob3.knobrotation);
+      cVout += vout_arr[i+8];
+    }
+  }
+}

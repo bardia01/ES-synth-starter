@@ -1,0 +1,7 @@
+{
+<<<<<<< HEAD
+    "FSharp.suggestGitignore": false
+=======
+    "cmake.configureOnOpen": false
+>>>>>>> chords_bardia
+}
